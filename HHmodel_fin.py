@@ -1,5 +1,5 @@
 """
-基础版代码，对应课件中的示例。
+在基础版代码的基础上，增加了课后思考题中提到的内容，即 m shift 后神经元发放的变化。
 """
 
 import brainpy as bp
@@ -232,5 +232,36 @@ axe[2].plot(runner.mon.ts, runner.mon.h, linewidth=2, color="green")
 axe[2].set_ylabel("Channel")
 axe[2].legend(["m", "n", "h"])
 plt.xlabel("Time (ms)")
+plt.tight_layout()
+plt.show()
+
+
+# 更改模型中参数后，观察 m shift 后神经元发放的变化
+class ShiftedHH(HH):
+    def __init__(self, size, mshift=0.0, **kwargs):
+        super(ShiftedHH, self).__init__(size=size, **kwargs)
+        self.mshift = mshift
+
+    def dm(self, m, t, V):
+        input = V + self.mshift  # 将输入电压进行平移
+        alpha = 0.1 * (input + 40) / (1 - bm.exp(-(input + 40) / 10))
+        beta = 4.0 * bm.exp(-(input + 65) / 18)
+        dmdt = alpha * (1 - m) - beta * m
+        return dmdt
+
+
+currents, length = bp.inputs.section_input(
+    values=[0.0, 10, 0.0], durations=[10, 2, 25], return_length=True
+)
+hh = ShiftedHH(1, mshift=-10.0)
+runner = bp.DSRunner(
+    hh, monitors=["V", "m", "h", "n", "gNa_", "gK_"], inputs=["input", currents, "iter"]
+)
+runner.predict(length)
+# 可视化
+bp.visualize.line_plot(runner.mon.ts, runner.mon.V, ylabel="V (mV)")
+# 将电流变化画在膜电位变化的下方
+plt.plot(runner.mon.ts, np.asarray(currents) - 90)
+plt.title("HH model with m shift")
 plt.tight_layout()
 plt.show()
