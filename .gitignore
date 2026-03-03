@@ -1,0 +1,9 @@
+# ide
+**/.vscode
+
+# python
+**/__pycache__/
+
+# docs
+/archive
+/ppt
