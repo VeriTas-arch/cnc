@@ -13,18 +13,17 @@ class Delta(bp.dyn.SynConn):
         self.g = bm.Variable(bm.zeros(self.post.num))
         self.delay = bm.LengthDelay(self.pre.spike, delay_step)
 
-        # 获取关于连接的信息
-        self.pre2post = self.conn.require("pre2post")
+        # 使用连接矩阵聚合事件，避免 CPU 下 pre2post 事件算子对 numba 的依赖
+        self.conn_mat = bm.asarray(self.conn.require("conn_mat"), dtype=bm.float_)
 
     def update(self):
         # 取出延迟了 delay_step 时间步长的突触前脉冲信号
         delayed_pre_spike = self.delay(self.delay_step)
         # 根据最新的突触前脉冲信号更新延迟变量
         self.delay.update(self.pre.spike)
-        # 根据连接模式计算各个突触后神经元收到的信号强度
-        post_sp = bm.pre2post_event_sum(
-            delayed_pre_spike, self.pre2post, self.post.num, self.g_max
-        )
+        # 根据连接矩阵计算各个突触后神经元收到的信号强度
+        pre_sp = bm.asarray(delayed_pre_spike, dtype=bm.float_)
+        post_sp = bm.matmul(pre_sp, self.conn_mat) * self.g_max
         self.g.value = post_sp
         # 将 Delta 突触产生的电流累加到突触后神经元输入
         self.post.input += self.g

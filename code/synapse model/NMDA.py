@@ -32,7 +32,8 @@ class NMDA(bp.dyn.SynConn):
         self.T_duration = T_duration
         self.delay_step = delay_step
 
-        self.pre2post = self.conn.require("pre2post")
+        # 使用连接矩阵将 pre 侧脉冲映射到 post 侧，避免 numba 依赖
+        self.conn_mat = bm.asarray(self.conn.require("conn_mat"), dtype=bm.float_)
 
         self.x = bm.Variable(bm.zeros(self.post.num))
         self.s = bm.Variable(bm.zeros(self.post.num))
@@ -63,8 +64,10 @@ class NMDA(bp.dyn.SynConn):
         self.delay.update(self.pre.spike)
 
         ## step 2：计算 [T] 的影响
+        pre_sp = bm.asarray(delayed_pre_spike, dtype=bm.float_)
+        post_sp = bm.matmul(pre_sp, self.conn_mat) > 0
         self.spike_arrival_time.value = bm.where(
-            delayed_pre_spike, t, self.spike_arrival_time
+            post_sp, t, self.spike_arrival_time
         )  # 计算神经递质到达突触后膜的时间
         T = (
             (t - self.spike_arrival_time) < self.T_duration

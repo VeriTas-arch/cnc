@@ -24,7 +24,8 @@ class Alpha(bp.dyn.SynConn):
         self.delay_step = delay_step
         self.type = type  # CUBA / COBA
 
-        self.pre2post = self.conn.require("pre2post")
+        # Use a dense connection matrix to avoid numba-dependent event operators.
+        self.conn_mat = bm.asarray(self.conn.require("conn_mat"), dtype=bm.float_)
         self.g = bm.Variable(bm.zeros(self.post.num))
         self.h = bm.Variable(bm.zeros(self.post.num))
         self.delay = bm.LengthDelay(self.pre.spike, delay_step)
@@ -38,9 +39,8 @@ class Alpha(bp.dyn.SynConn):
         delayed_pre_spike = self.delay(self.delay_step)
         self.delay.update(self.pre.spike)
 
-        post_sp = bm.pre2post_event_sum(
-            delayed_pre_spike, self.pre2post, self.post.num, self.g_max
-        )
+        pre_sp = bm.asarray(delayed_pre_spike, dtype=bm.float_)
+        post_sp = bm.matmul(pre_sp, self.conn_mat) * self.g_max
 
         self.h.value = self.ini_h(self.h, t, dt) + post_sp
         self.g.value = self.int_g(self.g, t, self.h, dt)
