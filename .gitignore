@@ -7,6 +7,10 @@
 # docs
 /archive
 /ppt
+/ref
+
+# data
+**/outputs/
 
 # bug reports
 /bug
