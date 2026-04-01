@@ -348,7 +348,6 @@ def run_regime(
     fps: int,
 ):
     result = simulate_regime(config)
-    save_dir.mkdir(parents=True, exist_ok=True)
     plot_regime(result, save_path=save_dir / f"{file_stem(config)}.png", show=show)
     if make_gif or show:
         animate_regime(
