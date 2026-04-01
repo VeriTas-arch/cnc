@@ -15,7 +15,6 @@ from pathlib import Path
 
 import brainpy as bp
 import brainpy.math as bm
-import brainstate
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation, PillowWriter
@@ -96,7 +95,7 @@ class CANN1DSFA(bp.dyn.NeuDyn):
         return bp.JointEq([du, dv])
 
     def make_conn(self, x):
-        d = periodic_delta(x - x[:, None], z_range=self.z_range)
+        d = wrapped_difference(x - x[:, None], z_range=self.z_range)
         return (
             self.j0
             * bm.exp(-0.5 * bm.square(d / self.a))
@@ -114,17 +113,17 @@ class CANN1DSFA(bp.dyn.NeuDyn):
         self.center.value = bm.angle(bm.sum(self.u * self.phase_kernel))
 
 
-def periodic_delta(x, z_range=2.0 * bm.pi):
+def wrapped_difference(x, z_range=2.0 * bm.pi):
     return ((x + 0.5 * z_range) % z_range) - 0.5 * z_range
 
 
 def gaussian_drive(x, pos, amplitude, a, z_range=2.0 * bm.pi):
-    delta = periodic_delta(x - pos, z_range=z_range)
+    delta = wrapped_difference(x - pos, z_range=z_range)
     return amplitude * bm.exp(-(delta**2) / (4.0 * a**2))
 
 
-def wrap_for_display(values, z_range=2.0 * np.pi):
-    wrapped = np.asarray(periodic_delta(np.asarray(values), z_range=z_range))
+def wrap_trajectory_for_display(values, z_range=2.0 * np.pi):
+    wrapped = np.asarray(wrapped_difference(np.asarray(values), z_range=z_range))
     jumps = np.abs(np.diff(wrapped)) > (0.5 * z_range)
     wrapped = wrapped.copy()
     wrapped[1:][jumps] = np.nan
@@ -160,7 +159,7 @@ def build_inputs(config: RegimeConfig, x):
     inputs = np.zeros((total_steps, config.num))
     target_visible = np.full(total_steps, np.nan)
     if stim_steps > 0:
-        target_visible[:stim_steps] = periodic_delta(
+        target_visible[:stim_steps] = wrapped_difference(
             config.target_pos0 + config.v_ext * ts[:stim_steps]
         )
         inputs[:stim_steps] = np.asarray(
@@ -176,7 +175,6 @@ def build_inputs(config: RegimeConfig, x):
 
 
 def simulate_regime(config: RegimeConfig):
-    brainstate.environ.set(dt=config.dt)
     bm.set_dt(config.dt)
 
     model = CANN1DSFA(
@@ -217,8 +215,8 @@ def simulate_regime(config: RegimeConfig):
 def plot_regime(result, save_path: Path | None = None, show: bool = False):
     config = result["config"]
     ts = result["ts"]
-    center_display = wrap_for_display(result["center"])
-    target_display = wrap_for_display(result["target_visible"])
+    center_display = wrap_trajectory_for_display(result["center"])
+    target_display = wrap_trajectory_for_display(result["target_visible"])
 
     fig, axes = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
 
@@ -265,8 +263,8 @@ def animate_regime(
     x = result["x"]
     u = result["u"]
     inputs = result["input"]
-    center = wrap_for_display(result["center"])
-    target = wrap_for_display(result["target_visible"])
+    center = wrap_trajectory_for_display(result["center"])
+    target = wrap_trajectory_for_display(result["target_visible"])
 
     frames = list(range(0, len(ts), frame_stride))
     if frames[-1] != len(ts) - 1:
@@ -316,7 +314,7 @@ def animate_regime(
             f"t={ts[idx]:.1f} ms\n"
             f"bump={center[idx]:.3f}\n"
             f"target={target[idx]:.3f}\n"
-            f"delta={periodic_delta(center[idx]-target[idx]):.3f}"
+            f"delta={wrapped_difference(center[idx]-target[idx]):.3f}"
         )
         return (input_line, bump_line, target_line, center_line, cursor, status)
 
