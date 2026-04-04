@@ -22,6 +22,39 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 
 @dataclass(frozen=True)
 class RegimeConfig:
+    """Configuration of one CANN+SFA simulation regime.
+
+    Attributes
+    ----------
+    name : str
+        Regime name used in titles and output naming.
+    num : int
+        Number of neurons (spatial grid points on the ring).
+    tau : float
+        Time constant of neural activity variable u.
+    tau_v : float
+        Time constant of adaptation variable v.
+    g : float
+        Gain of the firing-rate nonlinearity.
+    k : float
+        Strength of global divisive inhibition.
+    a : float
+        Spatial width of recurrent kernel and external drive.
+    m : float
+        Coupling strength from u to adaptation v.
+    dt : float
+        Simulation time step in ms.
+    alpha : float
+        Amplitude of external Gaussian stimulus.
+    v_ext : float
+        External target velocity along the ring (rad/ms).
+    target_pos0 : float
+        Initial target position on the ring (rad).
+    stim_duration : float | None
+        Stimulus duration in ms. None means full trial duration.
+    total_duration : float
+        Total simulation duration in ms.
+    """
     name: str
     num: int = 256
     tau: float = 1.0
@@ -29,7 +62,6 @@ class RegimeConfig:
     g: float = 1.0
     k: float = 1.0
     a: float = 0.3
-    j0: float = 1.0
     m: float = 0.05
     dt: float = 0.1
     alpha: float = 0.2
@@ -63,14 +95,13 @@ SHOW_PLOTS = True
 
 
 class CANN1DSFA(bp.dyn.NeuDyn):
-    def __init__(self, num, m=0.1, tau=1.0, tau_v=10.0, g=1.0, k=0.1, a=0.5, j0=4.0):
+    def __init__(self, num, m=0.1, tau=1.0, tau_v=10.0, g=4.0, k=0.1, a=0.5):
         super().__init__(size=num)
         self.tau = tau
         self.tau_v = tau_v
         self.g = g
         self.k = k
         self.a = a
-        self.j0 = j0
         self.m = m
         self.z_range = 2.0 * bm.pi
         self.x = bm.arange(num) * self.z_range / num - bm.pi
@@ -96,11 +127,7 @@ class CANN1DSFA(bp.dyn.NeuDyn):
 
     def make_conn(self, x):
         d = wrapped_difference(x - x[:, None], z_range=self.z_range)
-        return (
-            self.j0
-            * bm.exp(-0.5 * bm.square(d / self.a))
-            / (bm.sqrt(2.0 * bm.pi) * self.a)
-        )
+        return bm.exp(-0.5 * bm.square(d / self.a)) / (bm.sqrt(2.0 * bm.pi) * self.a)
 
     def update(self):
         u2 = bm.square(self.u)
@@ -184,7 +211,6 @@ def simulate_regime(config: RegimeConfig):
         g=config.g,
         k=config.k,
         a=config.a,
-        j0=config.j0,
         m=config.m,
     )
     inputs, target_visible = build_inputs(config, model.x)
