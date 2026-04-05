@@ -29,7 +29,6 @@ class LIF(bp.dyn.NeuDyn):
         self.refractory = bm.Variable(bm.zeros(self.num, dtype=bool))
         self.spike = bm.Variable(bm.zeros(self.num, dtype=bool))
 
-        ...
         # 使用指数欧拉方法进行积分
         self.integral = bp.odeint(f=self.derivative, method="exp_auto")
 
