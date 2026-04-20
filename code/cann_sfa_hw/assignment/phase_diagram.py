@@ -1,6 +1,8 @@
 """
 实验2：追踪状态的相图
 
+> 相图的计算可能比较耗时，建议先使用较小的 num_samples 进行调试
+
 作业要求：
 1. 补全 `run_point()`，对单个 (alpha, m) 参数点进行分类。
 2. 运行脚本，得到 smooth / oscillatory / traveling 三态相图。
