@@ -6,7 +6,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-
 from cann_sfa_triple_regimes import REGIMES, RegimeConfig, simulate_regime
 
 CLASS_TO_ID = {

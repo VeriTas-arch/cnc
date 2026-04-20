@@ -7,9 +7,9 @@
 3. 定性解释为什么随着参数变化会出现不同的动力学区域。
 """
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
-import sys
 
 import brainpy as bp
 import brainpy.math as bm

@@ -2,9 +2,9 @@
 实验1：波包的固有速度随 SFA 强度的变化
 """
 
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-import sys
 
 import brainpy as bp
 import brainpy.math as bm

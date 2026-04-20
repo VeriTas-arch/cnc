@@ -8,9 +8,9 @@
 4. 思考为什么仿真曲线会与理论曲线产生系统性偏差。
 """
 
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-import sys
 
 import brainpy as bp
 import brainpy.math as bm
