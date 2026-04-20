@@ -7,7 +7,7 @@
 ├── cann_sfa_common.py
 ├── intrinsic_speed.py
 ├── phase_diagram.py
-└── output  # 实验结果输出目录
+└── outputs     # 实验结果输出目录
     ├── intrinsic_speed
     │   ├── intrinsic_speed.png
     │   └── intrinsic_speed.npz
