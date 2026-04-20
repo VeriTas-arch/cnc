@@ -29,8 +29,8 @@ class Config(common.Config):
     m_max: float = 200.0 / 48.0
     save_dir: Path = common.OUT_DIR / "phase_diagram"
     cache_path: Path = common.OUT_DIR / "phase_diagram" / "state_map.npz"
-    recompute: bool = True
-    show: bool = False
+    recompute: bool = False
+    show: bool = True
 
     @property
     def alpha(self):
@@ -113,7 +113,7 @@ def plot(cfg: Config, state):
     )
     cbar = fig.colorbar(image, ax=ax, ticks=[1, 2, 3])
     cbar.ax.set_yticklabels([LABELS[k] for k in [1, 2, 3]])
-    ax.set_xlabel("input strength α")
+    ax.set_xlabel(r"input strength $\alpha$")
     ax.set_ylabel("feedback inhibition strength m")
     ax.set_title("tracking-states phase diagram")
     fig.tight_layout()
