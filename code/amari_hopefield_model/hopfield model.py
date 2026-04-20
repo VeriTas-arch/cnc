@@ -48,7 +48,7 @@ class AmariHopfieldNet(bp.DynamicalSystem):
         self.num = num
         self.weight = bm.Variable(bm.zeros([num, num]))
 
-    # Train function for the net. (By updating the weights)
+    # Train function for the net.
     @bm.cls_jit
     def store_patterns(self, samples):
         # data: An array with [d, N]. 'd' is the number of data samples used to train. (In this case 2)
@@ -65,10 +65,10 @@ class AmariHopfieldNet(bp.DynamicalSystem):
         # sample is an array with the shape of (N,)
         assert sample.shape[0] == self.num
 
-        # Data cross-product gives neural hopfield update rule.
+        # Data outer-product gives neural hopfield update rule.
         w_update = bm.outer(sample, sample)
 
-        # Sum all pattern cross-products.
+        # Sum all pattern outer-products.
         self.weight += w_update
 
     def async_recover(self, sample, n, energy=False):
@@ -80,7 +80,6 @@ class AmariHopfieldNet(bp.DynamicalSystem):
 
         def recover(i):
             # i: the position to update
-            # update
             sample[i] = bm.sign(bm.inner(self.weight[i], sample))
             # return energy
             if energy:
@@ -101,7 +100,6 @@ net = AmariHopfieldNet(num=data.shape[1])
 # store the information of the two images
 net.store_patterns(np.vstack((image1, image2)))
 
-# corrupt the two images with noise and reconstruct them
 # Corrupt the image2 with bernouli noise.
 corrupted_image2 = add_bernouli_noise(image2, prob=0.4)
 
@@ -109,7 +107,6 @@ corrupted_image2 = add_bernouli_noise(image2, prob=0.4)
 n_iterations = 10000
 
 # Loop through, and recover the image from it's corrupted self.
-# energy_vec: This will store the energy of the Hopfield net.
 cleaned_image, energy_vec = net.async_recover(corrupted_image2, n_iterations, True)
 
 # original vs. corrupted vs. recovered image2
@@ -122,7 +119,7 @@ ax[2].imshow(cleaned_image.reshape(28, 28), interpolation="None", cmap="winter")
 ax[2].set_title("Recovered Image2", fontsize=24)
 plt.show()
 
-# Plot the Hopfield energy during recovery
+# Plot the network energy during recovery
 plt.figure(figsize=[9, 6])
 plt.plot(bm.as_numpy(energy_vec))
 plt.xlabel("Iteration", fontsize=24)
@@ -130,19 +127,16 @@ plt.ylabel("Energy", fontsize=24)
 plt.title("Image2", fontsize=24)
 plt.show()
 
-# Masking and Bernouli noise
+# Corrupt the image2 with mask noise.
 mask_matrix = np.asarray([[7, 20], [8, 25]], dtype=np.int32)
-# image = data[0].reshape(28, 28)
 corrupted_image1 = add_mask_noise(
     image1.reshape(28, 28), mask_value=1, mask_matrix=mask_matrix
 )
-# corrupted_image1 = add_bernouli_noise(corrupted_image1, prob=0.3)
 
 # The number of iterations where we randomly update neurons/pixels
 n_iterations = 10000
 
 # Loop through, and recover the image from it's corrupted self.
-# energy_vec: storing the energy of the net.
 cleaned_image, energy_vec = net.async_recover(
     corrupted_image1.flatten(), n_iterations, True
 )
@@ -167,7 +161,7 @@ plt.title("Image1", fontsize=24)
 plt.show()
 
 
-# Try to reconstruct the intersection of the two images, one more trials
+# Try to reconstruct the intersection of the two images
 corrupted_intersection = add_bernouli_noise(
     same_of_pics, prob=0.5
 )  # corrupt the intersection
