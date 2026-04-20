@@ -1,8 +1,9 @@
+from pathlib import Path
+
 import brainpy as bp
 import brainpy.math as bm
 import matplotlib.pyplot as plt
 import numpy as np
-from pathlib import Path
 
 data_dir = Path(__file__).resolve().parent / "test_data.npy"
 # data_dir = Path(__file__).resolve().parent / "other_images.npy"
