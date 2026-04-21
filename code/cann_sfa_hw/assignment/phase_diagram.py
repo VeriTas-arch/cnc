@@ -83,8 +83,7 @@ class Model(common.CANN1DSFA):
 
 def run_point(alpha: float, m: float, cfg: Config):
     """
-    TODO(student):
-    对单个参数点 (alpha, m) 运行 tracking 仿真，并返回状态类别：
+    TODO: 对单个参数点 (alpha, m) 运行 tracking 仿真，并返回状态类别：
 
     - 1: smooth
     - 2: oscillatory
