@@ -3,7 +3,7 @@
 """
 
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import brainpy as bp
@@ -24,11 +24,16 @@ class Config(common.Config):
     cue_time: float = 10.0
     total_time: float = 2.0e4
     cue_pos: float = -(np.pi / 2.0 + np.pi / 8.0)
-    scaled_m: np.ndarray = field(default_factory=lambda: np.arange(0.0, 4.05, 0.05))
+    scaled_m_start: float = 0.0
+    scaled_m_end: float = 4.0
+    n_samples: int = 81
     save_path: Path = common.OUT_DIR / "intrinsic_speed" / "intrinsic_speed.png"
     cache_path: Path = common.OUT_DIR / "intrinsic_speed" / "intrinsic_speed.npz"
     recompute: bool = False
     show: bool = True
+
+    def __post_init__(self):
+        object.__setattr__(self, "scaled_m", np.linspace(self.scaled_m_start, self.scaled_m_end, self.n_samples))
 
     @property
     def m(self) -> np.ndarray:
@@ -102,7 +107,10 @@ def save_cache(cfg: Config, speed):
 
 
 def scan(cfg: Config, speed=None):
-    speed = np.full_like(cfg.m, np.nan, dtype=float) if speed is None else speed
+    if speed is None or np.asarray(speed).shape != cfg.m.shape:
+        speed = np.full_like(cfg.m, np.nan, dtype=float)
+    else:
+        speed = np.asarray(speed, dtype=float)
     total = len(cfg.m)
     inputs = bm.asarray(make_inputs(cfg))
     conn_mat = common.conn(cfg)
@@ -132,6 +140,17 @@ def load_or_scan(cfg: Config):
         speed = np.asarray(data["speed"], dtype=float)
         if speed.shape == cfg.m.shape and np.all(np.isfinite(speed)):
             return speed
+
+        # Try to reuse cache points when an old run used a different sample count.
+        aligned = np.full_like(cfg.m, np.nan, dtype=float)
+        if "scaled_m" in data and data["scaled_m"].shape == speed.shape:
+            cached_scaled = np.asarray(data["scaled_m"], dtype=float)
+            for i, s in enumerate(cfg.scaled_m):
+                idx = np.flatnonzero(np.isclose(cached_scaled, s, atol=1e-12, rtol=0.0))
+                if idx.size > 0 and np.isfinite(speed[idx[0]]):
+                    aligned[i] = float(speed[idx[0]])
+            speed = aligned
+
         return scan(cfg, speed=speed)
 
     speed = scan(cfg)

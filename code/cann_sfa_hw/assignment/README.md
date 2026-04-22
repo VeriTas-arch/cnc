@@ -41,3 +41,4 @@
 
 - 第一次调试代码时，使用 `recompute = True`
 - 代码正确、结果稳定后，可以改成 `recompute = False`，直接复用缓存，便于调试绘图风格
+- 如果修改了 `scaled_m_start / scaled_m_end / n_samples`，且 `recompute = False`，`intrinsic_speed.py` 会尽量复用旧缓存中仍然重合的采样点；如果希望完全重算，请将 `recompute = True` 或手动删除缓存文件
