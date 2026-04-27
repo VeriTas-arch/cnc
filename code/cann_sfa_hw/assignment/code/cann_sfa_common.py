@@ -5,7 +5,7 @@ import brainpy as bp
 import brainpy.math as bm
 import numpy as np
 
-OUT_DIR = Path(__file__).resolve().parent / "outputs"
+OUT_DIR = Path(__file__).resolve().parent.parent / "outputs"
 
 
 @dataclass(frozen=True)
