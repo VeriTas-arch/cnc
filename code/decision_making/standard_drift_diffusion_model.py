@@ -67,6 +67,32 @@ def get_DM(X):  # 得到做出的决策及做出决策的时刻
     return [time_of_dm, decision]
 
 
+def get_accuracy(decision, time_of_DM, A):
+    # 以 evidence A 的符号作为正确方向，只统计已经做出决策的 trials
+    valid = ~np.isnan(time_of_DM)
+    have_done_decision = np.sum(valid, axis=1, keepdims=True)
+    has_decision = have_done_decision[:, 0] > 0
+
+    evidence_direction = np.sign(A.squeeze())
+    if np.size(evidence_direction) == 1:
+        correct_direction = np.full((decision.shape[0], 1), evidence_direction)
+    else:
+        correct_direction = evidence_direction.reshape(-1, 1)
+
+    decision_direction = np.sign(decision)
+    correct = (
+        (decision_direction == correct_direction) & valid & (correct_direction != 0)
+    )
+    accuracy = np.full((decision.shape[0], 1), np.nan)
+    can_score_accuracy = (correct_direction[:, 0] != 0) & has_decision
+    accuracy[can_score_accuracy] = (
+        np.sum(correct[can_score_accuracy], axis=1, keepdims=True)
+        / have_done_decision[can_score_accuracy]
+    )
+
+    return accuracy
+
+
 def plot_one_paramrter(X):
     # 观察 A 取正负的影响
     a_vals = A.squeeze()
@@ -110,10 +136,16 @@ def plot_diff_parameter(X):
     # 调用 get_DM 得到不同 A 取值下模型做出决策花费的时间，并对所有 trials 平均
     # 在这个过程中，用 have_done_decision 记录做出决策的 trials 数量
     Tlabel = para * 1e3
-    time_of_DM = get_DM(X)[0]
+    time_of_DM, decision = get_DM(X)
     valid = ~np.isnan(time_of_DM)
     have_done_decision = np.sum(valid, axis=1, keepdims=True)
-    mean_time_DM = np.nansum(time_of_DM, axis=1, keepdims=True) / have_done_decision
+    has_decision = have_done_decision[:, 0] > 0
+    mean_time_DM = np.full((len_para, 1), np.nan)
+    mean_time_DM[has_decision] = (
+        np.nansum(time_of_DM[has_decision], axis=1, keepdims=True)
+        / have_done_decision[has_decision]
+    )
+    accuracy = get_accuracy(decision, time_of_DM, A)
 
     plt.figure(figsize=[15, 7])
 
@@ -133,14 +165,21 @@ def plot_diff_parameter(X):
     plt.legend(loc="lower right", fontsize=12)
     plt.show()
 
-    _, px = plt.subplots(1, 2, figsize=(12, 5))
+    _, px = plt.subplots(1, 3, figsize=(18, 5))
     px[0].plot((para * (10**3)).T, mean_time_DM)
     px[0].set_xlabel(r"different {} ($*10^3$)".format(tex_para), fontsize=18)
     px[0].set_title("Time of decision making", fontsize=18)
 
     px[1].plot((para * (10**3)).T, have_done_decision / n_trial)
     px[1].set_xlabel(r"different {} ($*10^3$)".format(tex_para), fontsize=18)
-    px[1].set_title("Accuracy", fontsize=18)
+    px[1].set_title("Decision rate", fontsize=18)
+
+    px[2].plot((para * (10**3)).T, accuracy)
+    px[2].set_xlabel(r"different {} ($*10^3$)".format(tex_para), fontsize=18)
+    px[2].set_ylim(0, 1)
+    px[2].set_title("Accuracy", fontsize=18)
+    plt.tight_layout()
+    plt.savefig("diff_para.png", dpi=300)
     plt.show()
 
 
