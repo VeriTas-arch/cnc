@@ -98,6 +98,7 @@ def plot_one_paramrter(X):
     plt.tight_layout()
     plt.show()
 
+
 def plot_diff_parameter(X):
     if run_type == 1:
         para = A.squeeze()
