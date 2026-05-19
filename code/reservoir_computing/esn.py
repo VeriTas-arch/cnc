@@ -483,8 +483,8 @@ def fit_Lorenz_system(predict_step=200):
 
 
 if __name__ == "__main__":
-    # show_ESN_property()
+    show_ESN_property()
     fit_sine_wave(training_method="force")
-    # fit_sine_wave(training_method="ridge")
-    # fit_Lorenz_system(200)
-    # fit_Lorenz_system(2000)
+    fit_sine_wave(training_method="ridge")
+    fit_Lorenz_system(200)
+    fit_Lorenz_system(2000)
