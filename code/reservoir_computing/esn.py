@@ -394,7 +394,7 @@ def fit_sine_wave(training_method="force"):
     plt.show()
 
 
-def fit_Lorenz_system(predict_step=200):
+def fit_Lorenz_system(predict_step=200, training_method="force"):
     bm.enable_x64()
     predict_step = int(predict_step)
     if predict_step <= 0:
@@ -473,18 +473,30 @@ def fit_Lorenz_system(predict_step=200):
 
         plt.show()
 
-    # 用岭回归法训练
-    ridge_trainer = bp.RidgeTrainer(model, alpha=1e-6)
-    training_lorenz(ridge_trainer, "Training with Ridge Regression")
-
-    # 用 FORCE 学习法训练
-    force_trainer = bp.ForceTrainer(model, alpha=1e-6)
-    training_lorenz(force_trainer, "Training with FORCE Learning")
+    if training_method not in ["ridge", "force"]:
+        raise ValueError("training_method must be either 'ridge' or 'force'.")
+    elif training_method == "ridge":
+        # 用岭回归法训练
+        ridge_trainer = bp.RidgeTrainer(model, alpha=1e-6)
+        training_lorenz(ridge_trainer, "Training with Ridge Regression")
+    elif training_method == "force":
+        # 用 FORCE 学习法训练
+        force_trainer = bp.ForceTrainer(model, alpha=1e-6)
+        training_lorenz(force_trainer, "Training with FORCE Learning")
 
 
 if __name__ == "__main__":
+    # ------ Basic property of ESN ------
     show_ESN_property()
+
+    # ------ Fit sine wave with ESN ------
     fit_sine_wave(training_method="force")
     fit_sine_wave(training_method="ridge")
-    fit_Lorenz_system(200)
-    fit_Lorenz_system(2000)
+
+    # ------ Fit Lorenz system with ESN ------
+    fit_Lorenz_system(200, training_method="force")
+    fit_Lorenz_system(200, training_method="ridge")
+
+    # ------ An unsuccessful case ------
+    fit_Lorenz_system(2000, training_method="force")
+    fit_Lorenz_system(2000, training_method="ridge")
