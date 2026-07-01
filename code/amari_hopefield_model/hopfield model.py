@@ -57,6 +57,9 @@ class AmariHopfieldNet(bp.DynamicalSystem):
         assert samples.shape[1] == self.num
         bm.for_loop(self.store, samples)
 
+        # Average all pattern outer-products.
+        self.weight /= samples.shape[0]
+
         # we need to make sure that the diagonal elements of the final weight matrix are zero.
         bm.fill_diagonal(self.weight, 0)
 
@@ -92,7 +95,7 @@ class AmariHopfieldNet(bp.DynamicalSystem):
     # Computeing the nets' energy.
     def energy(self, x):
         # x: [N] data vector
-        return bm.inner(-x @ self.weight, x)
+        return 0.5 * bm.inner(-x @ self.weight, x)
 
 
 # There are as many neurons as pixels per pattern, i.e., 784.

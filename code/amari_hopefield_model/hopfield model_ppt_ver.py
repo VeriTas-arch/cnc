@@ -66,6 +66,7 @@ class AmariHopfieldNet(bp.DynamicalSystem):
         assert samples.shape[1] == self.num
 
         bm.for_loop(self.store, samples)  # 循环 2 次，每次存储一张图片的信息
+        self.weight /= samples.shape[0]  # 对所有 memory patterns 的外积取平均
         bm.fill_diagonal(
             self.weight, 0
         )  # 神经元自身和自身没有连接，每次循环，将对角元素置 0
@@ -101,7 +102,7 @@ class AmariHopfieldNet(bp.DynamicalSystem):
 
     # Computeing the nets' energy.
     def energy(self, x):
-        return bm.inner(-x @ self.weight, x)
+        return 0.5 * bm.inner(-x @ self.weight, x)
 
 
 # There are as many neurons as pixels per pattern, i.e., 784.
