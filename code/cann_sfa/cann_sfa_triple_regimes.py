@@ -13,8 +13,6 @@ References
 from dataclasses import dataclass
 from pathlib import Path
 
-import brainpy as bp
-import brainpy.math as bm
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation, PillowWriter
@@ -94,59 +92,56 @@ SAVE_DIR.mkdir(parents=True, exist_ok=True)
 SHOW_PLOTS = True
 
 
-class CANN1DSFA(bp.dyn.NeuDyn):
+class CANN1DSFA:
     def __init__(self, num, m=0.1, tau=1.0, tau_v=10.0, g=4.0, k=0.1, a=0.5):
-        super().__init__(size=num)
+        self.num = num
         self.tau = tau
         self.tau_v = tau_v
         self.g = g
         self.k = k
         self.a = a
         self.m = m
-        self.z_range = 2.0 * bm.pi
-        self.x = bm.arange(num) * self.z_range / num - bm.pi
+        self.z_range = 2.0 * np.pi
+        self.x = np.arange(num) * self.z_range / num - np.pi
 
-        self.u = bm.Variable(bm.zeros(num))
-        self.v = bm.Variable(bm.zeros(num))
-        self.input = bm.Variable(bm.zeros(num))
-        self.center = bm.Variable(0.0)
+        self.u = np.zeros(num)
+        self.v = np.zeros(num)
+        self.input = np.zeros(num)
+        self.center = 0.0
 
         self.conn_mat = self.make_conn(self.x)
-        self.phase_kernel = bm.exp(1j * self.x)
-        self.integral = bp.odeint(f=self.derivative, method="exp_auto")
+        self.phase_kernel = np.exp(1j * self.x)
 
-    @property
-    def derivative(self):
-        def du(u, t, v, irec, iext):
-            return (-u + irec + iext - v) / self.tau
-
-        def dv(v, t, u):
-            return (-v + self.m * u) / self.tau_v
-
-        return bp.JointEq([du, dv])
+    def _exprel(self, x):
+        if abs(x) < 1e-8:
+            return 1.0 + x / 2.0
+        return np.expm1(x) / x
 
     def make_conn(self, x):
         d = wrapped_difference(x - x[:, None], z_range=self.z_range)
-        return bm.exp(-0.5 * bm.square(d / self.a)) / (bm.sqrt(2.0 * bm.pi) * self.a)
+        return np.exp(-0.5 * np.square(d / self.a)) / (np.sqrt(2.0 * np.pi) * self.a)
 
-    def update(self):
-        u2 = bm.square(self.u)
-        r = self.g * u2 / (1.0 + self.k * bm.sum(u2))
-        irec = bm.dot(self.conn_mat, r)
-        u, v = self.integral(self.u, self.v, bp.share["t"], irec, self.input)
-        self.u[:] = bm.maximum(u, 0.0)
-        self.v[:] = v
+    def update(self, dt):
+        u2 = np.square(self.u)
+        r = self.g * u2 / (1.0 + self.k * np.sum(u2))
+        irec = np.dot(self.conn_mat, r)
+        du = (-self.u + irec + self.input - self.v) / self.tau
+        dv = (-self.v + self.m * self.u) / self.tau_v
+        self.u[:] = np.maximum(
+            self.u + dt * self._exprel(-dt / self.tau) * du, 0.0
+        )
+        self.v[:] = self.v + dt * self._exprel(-dt / self.tau_v) * dv
         self.input[:] = 0.0
-        self.center.value = bm.angle(bm.sum(self.u * self.phase_kernel))
+        self.center = np.angle(np.sum(self.u * self.phase_kernel))
 
 
-def wrapped_difference(x, z_range=2.0 * bm.pi):
+def wrapped_difference(x, z_range=2.0 * np.pi):
     return ((x + 0.5 * z_range) % z_range) - 0.5 * z_range
 
 
-def gaussian_drive(x, pos, amplitude, a, z_range=2.0 * bm.pi):
+def gaussian_drive(x, pos, amplitude, a, z_range=2.0 * np.pi):
     delta = wrapped_difference(x - pos, z_range=z_range)
-    return amplitude * bm.exp(-(delta**2) / (4.0 * a**2))
+    return amplitude * np.exp(-(delta**2) / (4.0 * a**2))
 
 
 def wrap_trajectory_for_display(values, z_range=2.0 * np.pi):
@@ -202,8 +197,6 @@ def build_inputs(config: RegimeConfig, x):
 
 
 def simulate_regime(config: RegimeConfig):
-    bm.set_dt(config.dt)
-
     model = CANN1DSFA(
         num=config.num,
         tau=config.tau,
@@ -214,18 +207,15 @@ def simulate_regime(config: RegimeConfig):
         m=config.m,
     )
     inputs, target_visible = build_inputs(config, model.x)
-
-    runner = bp.DSRunner(
-        model,
-        inputs=("input", bm.asarray(inputs), "iter"),
-        monitors=["u", "center"],
-        progress_bar=False,
-    )
-    runner.predict(config.total_duration)
-
-    ts = np.asarray(runner.mon.ts)
-    u = np.asarray(runner.mon.u)
-    center = np.unwrap(np.asarray(runner.mon.center))
+    ts = np.arange(inputs.shape[0]) * config.dt
+    u = np.zeros((inputs.shape[0], config.num))
+    center = np.zeros(inputs.shape[0])
+    for i, current_input in enumerate(inputs):
+        model.input[:] = current_input
+        model.update(config.dt)
+        u[i] = model.u
+        center[i] = model.center
+    center = np.unwrap(center)
     return {
         "config": config,
         "ts": ts,
@@ -317,7 +307,14 @@ def animate_regime(
     cursor = center_ax.axvline(
         float(ts[0]), color="black", linestyle=":", linewidth=1.0
     )
-    status = center_ax.text(0.02, 0.96, "", transform=center_ax.transAxes, va="top")
+    status = center_ax.text(
+        0.02,
+        0.96,
+        "",
+        transform=center_ax.transAxes,
+        va="top",
+        bbox={"boxstyle": "round", "facecolor": "white", "edgecolor": "black"},
+    )
     center_ax.legend(loc="upper right")
 
     def init():

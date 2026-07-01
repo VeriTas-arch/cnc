@@ -14,8 +14,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import brainpy as bp
-import brainpy.math as bm
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -89,13 +87,13 @@ def make_inputs(cfg: Config):
 
 
 def run_m(cfg: Config, m, inputs, conn_mat):
-    bm.set_dt(cfg.dt)
     model = common.CANN1DSFA(cfg, m=m, conn_mat=conn_mat)
-    runner = bp.DSRunner(
-        model, inputs=("input", inputs, "iter"), monitors=["center"], progress_bar=False
-    )
-    runner.predict(cfg.total_time)
-    return np.asarray(runner.mon.center)
+    center = np.zeros(inputs.shape[0])
+    for i, current_input in enumerate(inputs):
+        model.input[:] = current_input
+        model.step()
+        center[i] = model.center
+    return center
 
 
 def measure_speed(center, m, cfg: Config):
@@ -120,7 +118,7 @@ def scan(cfg: Config, speed=None):
     else:
         speed = np.asarray(speed, dtype=float)
     total = len(cfg.m)
-    inputs = bm.asarray(make_inputs(cfg))
+    inputs = make_inputs(cfg)
     conn_mat = common.conn(cfg)
 
     for i, m in enumerate(cfg.m):

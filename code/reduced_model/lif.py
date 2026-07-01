@@ -1,9 +1,21 @@
-import brainpy as bp
-import brainpy.math as bm
 import matplotlib.pyplot as plt
+import numpy as np
 
 
-class LIF(bp.dyn.NeuDyn):
+def section_input(values, durations, dt=0.1, return_length=False):
+    currents = []
+    for value, duration in zip(values, durations):
+        steps = int(duration / dt)
+        value = np.asarray(value)
+        if value.ndim == 0:
+            currents.append(np.full(steps, float(value)))
+        else:
+            currents.append(np.repeat(value.reshape(1, -1), steps, axis=0))
+    currents = np.concatenate(currents, axis=0)
+    return (currents, len(currents)) if return_length else currents
+
+
+class LIF:
     def __init__(
         self,
         size,
@@ -15,7 +27,7 @@ class LIF(bp.dyn.NeuDyn):
         t_ref=5.0,
         name=None,
     ):
-        super(LIF, self).__init__(size=size, name=name)
+        self.num = int(size)
         self.V_rest = V_rest
         self.V_reset = V_reset
         self.V_th = V_th
@@ -23,45 +35,64 @@ class LIF(bp.dyn.NeuDyn):
         self.tau = tau
         self.t_ref = t_ref
 
-        self.V = bm.Variable(bm.ones(self.num) * V_rest)
-        self.input = bm.Variable(bm.zeros(self.num))
-        self.t_last_spike = bm.Variable(bm.ones(self.num) * -1e7)
-        self.refractory = bm.Variable(bm.zeros(self.num, dtype=bool))
-        self.spike = bm.Variable(bm.zeros(self.num, dtype=bool))
-
-        # 使用指数欧拉方法进行积分
-        self.integral = bp.odeint(f=self.derivative, method="exp_auto")
+        self.V = np.ones(self.num) * V_rest
+        self.input = np.zeros(self.num)
+        self.t_last_spike = np.ones(self.num) * -1e7
+        self.refractory = np.zeros(self.num, dtype=bool)
+        self.spike = np.zeros(self.num, dtype=bool)
 
     # 定义膜电位关于时间变化的微分方程
-    def derivative(self, V, t, R, Iext):
+    def derivative(self, V, R, Iext):
         dVdt = (-V + self.V_rest + R * Iext) / self.tau
         return dVdt
 
-    def update(self, *args, **kwargs):
-        t, dt = bp.share["t"], bp.share["dt"]
+    def update(self, input_current, t, dt):
+        self.input = np.asarray(input_current) + np.zeros(self.num)
         refractory = (t - self.t_last_spike) <= self.t_ref
 
-        V = self.integral(self.V, t, self.R, self.input, dt=dt)
-        V = bm.where(refractory, self.V, V)
+        # 使用指数欧拉方法进行积分
+        target = self.V_rest + self.R * self.input
+        V = target + (self.V - target) * np.exp(-dt / self.tau)
+        V = np.where(refractory, self.V, V)
 
         spike = V > self.V_th
-        self.spike.value = spike
-        self.t_last_spike.value = bm.where(spike, t, self.t_last_spike)
-        self.V.value = bm.where(spike, self.V_reset, V)
-        self.refractory.value = bm.logical_or(refractory, spike)
+        self.spike = spike
+        self.t_last_spike = np.where(spike, t, self.t_last_spike)
+        self.V = np.where(spike, self.V_reset, V)
+        self.refractory = np.logical_or(refractory, spike)
         self.input[:] = 0.0
+
+    def run(self, inputs, duration=None, dt=0.1):
+        if np.isscalar(inputs):
+            steps = int(duration / dt)
+            currents = np.full((steps, self.num), float(inputs))
+        else:
+            currents = np.asarray(inputs)
+            if currents.ndim == 1 and self.num == 1:
+                currents = currents[:, None]
+            elif currents.ndim == 1:
+                steps = int(duration / dt)
+                currents = np.repeat(currents.reshape(1, -1), steps, axis=0)
+
+        ts = np.arange(currents.shape[0]) * dt
+        Vs = np.zeros((currents.shape[0], self.num))
+        spikes = np.zeros((currents.shape[0], self.num), dtype=bool)
+        for i, t in enumerate(ts):
+            self.update(currents[i], t, dt)
+            Vs[i] = self.V
+            spikes[i] = self.spike
+        return ts, Vs, spikes
 
 
 # 在恒定电流输入下，LIF model 以固定频率发放
-currents, length = bp.inputs.section_input(
+currents, length = section_input(
     values=[0.0, 21], durations=[50, 150], return_length=True
 )
 group = LIF(1)
-runner = bp.DSRunner(group, monitors=["V"], inputs=["input", currents, "iter"])
-runner.predict(length)
+ts, V, _ = group.run(currents, dt=0.1)
 fig, axe = plt.subplots(2, 1, gridspec_kw={"height_ratios": [2, 1]})
-axe[0].plot(runner.mon.ts, runner.mon.V, color="blue")
-axe[1].plot(runner.mon.ts, currents, linewidth=2, color="blue")
+axe[0].plot(ts, V, color="blue")
+axe[1].plot(ts, currents, linewidth=2, color="blue")
 axe[0].set_ylabel("V")
 axe[1].set_ylabel("I")
 plt.xlabel("t (ms)")
@@ -70,11 +101,10 @@ plt.show()
 
 # LIF 神经元发放率与电流的关系
 duration = 1000
-input_currents = bm.arange(0, 600, 1)
+input_currents = np.arange(0, 600, 1)
 group = LIF(len(input_currents))
-runner = bp.DSRunner(group, monitors=["spike"], inputs=["input", input_currents])
-runner.predict(duration)
-F = runner.mon.spike.sum(axis=0) / (duration / 1000)
+_, _, spikes = group.run(input_currents, duration=duration, dt=0.1)
+F = spikes.sum(axis=0) / (duration / 1000)
 plt.plot(input_currents, F, linewidth=2)
 plt.xlabel("Input Current")
 plt.ylabel("Spiking Frequency")
@@ -82,17 +112,16 @@ plt.show()
 
 
 # LIF model 的 filter 作用
-in_va = bm.arange(0, 100, 0.1)
-duration = bm.ones(len(in_va)) * 0.1
-value = [40 * bm.sin(i) + 20 for i in in_va]  # 40 * sin(t) + 20
-currents, length = bp.inputs.section_input(
+in_va = np.arange(0, 100, 0.1)
+duration = np.ones(len(in_va)) * 0.1
+value = [40 * np.sin(i) + 20 for i in in_va]  # 40 * sin(t) + 20
+currents, length = section_input(
     values=value, durations=duration, return_length=True
 )
 group = LIF(1)
-runner = bp.DSRunner(group, monitors=["V"], inputs=["input", currents, "iter"])
-runner.predict(length)
+ts, V, _ = group.run(currents, dt=0.1)
 fig, axe = plt.subplots(2, 1, gridspec_kw={"height_ratios": [2, 1]})
-axe[0].plot(runner.mon.ts, runner.mon.V, color="blue")
+axe[0].plot(ts, V, color="blue")
 axe[1].plot(in_va, currents, linewidth=2, color="blue")
 axe[0].set_ylabel("V")
 axe[1].set_ylabel("I")

@@ -6,8 +6,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import brainpy as bp
-import brainpy.math as bm
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -50,27 +48,29 @@ class Model(common.CANN1DSFA):
         super().__init__(cfg, m=m)
         self.cfg = cfg
         self.alpha = alpha
-        self.center_u = bm.Variable(0.0)
-        self.center_i = bm.Variable(0.0)
+        self.center_u = 0.0
+        self.center_i = 0.0
 
-    def update(self):
-        t = bp.share["t"]
+    def update(self, t):
         loc = common.wrap(self.cfg.loc0 + self.cfg.v_ext * (t + self.dt))
         delta = common.circ_diff(self.x - loc, self.z_range)
-        self.input[:] = self.alpha * bm.exp(-(delta**2) / (4.0 * self.a**2))
+        self.input[:] = self.alpha * np.exp(-(delta**2) / (4.0 * self.a**2))
         self.step()
-        self.center_i.value = loc
-        self.center_u.value = common.fix_center(self.center, loc, self.a)
+        self.center_i = loc
+        self.center_u = common.fix_center(self.center, loc, self.a)
 
 
 def run_point(alpha: float, m: float, cfg: Config):
-    bm.set_dt(cfg.dt)
     model = Model(cfg, alpha=alpha, m=m)
-    runner = bp.DSRunner(model, monitors=["center_u", "center_i"], progress_bar=False)
-    runner.predict(cfg.total_time)
+    steps = int(round(cfg.total_time / cfg.dt))
+    ts = np.arange(steps) * cfg.dt
+    u = np.zeros(steps)
+    i = np.zeros(steps)
+    for step, t in enumerate(ts):
+        model.update(t)
+        u[step] = model.center_u
+        i[step] = model.center_i
 
-    u = np.asarray(runner.mon.center_u)
-    i = np.asarray(runner.mon.center_i)
     start = int(round(cfg.stable_time / cfg.dt))
     delta = u - i
     delta = delta[start:] - np.mean(delta[start:])
