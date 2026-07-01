@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import brainpy as bp
-import brainpy.math as bm
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -43,34 +41,31 @@ def add_mask_noise(img, mask_value=-1, mask_matrix=np.zeros((2, 2))):
     return img
 
 
-class AmariHopfieldNet(bp.DynamicalSystem):
-    def __init__(self, num):
-        super().__init__()
+class AmariHopfieldNet:
+    def __init__(self, num, theta=0.0):
         self.num = num
-        self.weight = bm.Variable(bm.zeros([num, num]))
+        self.theta = theta
+        self.weight = np.zeros([num, num], dtype=np.float32)
 
     # Train function for the net.
-    @bm.cls_jit
     def store_patterns(self, samples):
         # data: An array with [d, N]. 'd' is the number of data samples used to train. (In this case 2)
         assert samples.ndim == 2
         assert samples.shape[1] == self.num
-        bm.for_loop(self.store, samples)
-
-        # Average all pattern outer-products.
+        for sample in samples:
+            self.store(sample)
         self.weight /= samples.shape[0]
 
         # we need to make sure that the diagonal elements of the final weight matrix are zero.
-        bm.fill_diagonal(self.weight, 0)
+        np.fill_diagonal(self.weight, 0)
 
     # Storing one sample pattern
-    @bm.cls_jit
     def store(self, sample):
         # sample is an array with the shape of (N,)
         assert sample.shape[0] == self.num
 
         # Data outer-product gives neural hopfield update rule.
-        w_update = bm.outer(sample, sample)
+        w_update = np.outer(sample, sample)
 
         # Sum all pattern outer-products.
         self.weight += w_update
@@ -78,28 +73,27 @@ class AmariHopfieldNet(bp.DynamicalSystem):
     def async_recover(self, sample, n, energy=False):
         # n: the number of iterations to recover
         # energy: calculate the energy function
-        idxs = bm.random.randint(0, self.num, n)  # the sampled positions
-        # JIT compilation requires to label the value to be changed as Variable
-        sample = bm.Variable(sample)
+        idxs = np.random.randint(0, self.num, n)  # the sampled positions
+        sample = np.copy(sample)
+        energy_history = []
 
-        def recover(i):
+        for i in idxs:
             # i: the position to update
-            sample[i] = bm.sign(bm.inner(self.weight[i], sample))
+            sample[i] = np.sign(np.inner(self.weight[i], sample) - self.theta)
             # return energy
             if energy:
-                return self.energy(sample)
+                energy_history.append(self.energy(sample))
 
-        r = bm.for_loop(recover, idxs)  # for loop JIT
-        return (sample, r) if energy else sample
+        return (sample, np.asarray(energy_history)) if energy else sample
 
     # Computeing the nets' energy.
     def energy(self, x):
         # x: [N] data vector
-        return 0.5 * bm.inner(-x @ self.weight, x)
+        return -0.5 * np.inner(x @ self.weight, x) + self.theta * np.sum(x)
 
 
 # There are as many neurons as pixels per pattern, i.e., 784.
-net = AmariHopfieldNet(num=data.shape[1])
+net = AmariHopfieldNet(num=data.shape[1], theta=0.0)
 
 # store the information of the two images
 net.store_patterns(np.vstack((image1, image2)))
@@ -125,7 +119,7 @@ plt.show()
 
 # Plot the network energy during recovery
 plt.figure(figsize=[9, 6])
-plt.plot(bm.as_numpy(energy_vec))
+plt.plot(energy_vec)
 plt.xlabel("Iteration", fontsize=24)
 plt.ylabel("Energy", fontsize=24)
 plt.title("Image2", fontsize=24)
@@ -158,7 +152,7 @@ plt.show()
 
 # Plot the network energy during recovery
 plt.figure(figsize=[9, 6])
-plt.plot(bm.as_numpy(energy_vec))
+plt.plot(energy_vec)
 plt.xlabel("Iteration", fontsize=24)
 plt.ylabel("Energy", fontsize=24)
 plt.title("Image1", fontsize=24)
