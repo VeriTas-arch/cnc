@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-
 from synapse_utils import apply_brainpy_delay, create_post_hh
 
 
@@ -106,7 +105,9 @@ def run_syn(
 
 if __name__ == "__main__":
     run_syn(
-        DualExponential, type="CUBA", title="DualExponential Synapse Model (Current-Based)"
+        DualExponential,
+        type="CUBA",
+        title="DualExponential Synapse Model (Current-Based)",
     )
     run_syn(
         DualExponential,

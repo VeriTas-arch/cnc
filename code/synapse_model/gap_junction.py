@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-
 from synapse_utils import create_post_hh
 
 
@@ -49,19 +48,8 @@ def run_syn(syn_model, title, run_duration=100.0, Iext=7.5, dt=0.01):
     plt.title(title)
 
     plt.sca(gs[1])
-    plt.plot(
-        ts,
-        current[:, 0],
-        label="neu0-current",
-        color="#48d688",
-    )
-    plt.plot(
-        ts,
-        current[:, 1],
-        label="neu1-current",
-        color="#d64888",
-        linestyle="--",
-    )
+    plt.plot(ts, current[:, 0], label="neu0-current", color="#48d688")
+    plt.plot(ts, current[:, 1], label="neu1-current", color="#d64888", linestyle="--")
     plt.legend(loc="upper right")
 
     plt.tight_layout()

@@ -135,18 +135,35 @@ class HH:
 
         # 更新下一时刻变量的值
         dV, dm, dh, dn = self.derivative(self.V, self.m, self.h, self.n, self.input)
-        V = self.V + dt * self._exprel(
-            dt * self._linearize(lambda V: self.dV(V, self.h, self.n, self.m, self.input), self.V)
-        ) * dV
-        m = self.m + dt * self._exprel(
-            dt * self._linearize(lambda m: self.dm(m, self.V), self.m)
-        ) * dm
-        h = self.h + dt * self._exprel(
-            dt * self._linearize(lambda h: self.dh(h, self.V), self.h)
-        ) * dh
-        n = self.n + dt * self._exprel(
-            dt * self._linearize(lambda n: self.dn(n, self.V), self.n)
-        ) * dn
+        V = (
+            self.V
+            + dt
+            * self._exprel(
+                dt
+                * self._linearize(
+                    lambda V: self.dV(V, self.h, self.n, self.m, self.input), self.V
+                )
+            )
+            * dV
+        )
+        m = (
+            self.m
+            + dt
+            * self._exprel(dt * self._linearize(lambda m: self.dm(m, self.V), self.m))
+            * dm
+        )
+        h = (
+            self.h
+            + dt
+            * self._exprel(dt * self._linearize(lambda h: self.dh(h, self.V), self.h))
+            * dh
+        )
+        n = (
+            self.n
+            + dt
+            * self._exprel(dt * self._linearize(lambda n: self.dn(n, self.V), self.n))
+            * dn
+        )
 
         self.spike = np.logical_and(self.V < self.V_th, V >= self.V_th)
         self.t_last_spike = np.where(self.spike, t, self.t_last_spike)
@@ -182,6 +199,7 @@ class HH:
             records["gK_"][i] = self.gK_
         return ts, records
 
+
 if __name__ == "__main__":
     # 一个简单的示例，观察神经元在10ms的刺激电流作用下的活动
     currents, length = section_input(
@@ -197,7 +215,6 @@ if __name__ == "__main__":
     plt.legend(["membrane potential", "input current"])
     plt.tight_layout()
     plt.show()
-
 
     # 神经元在不同刺激电流强度和时长下的活动
     ## 1.不同刺激电流强度
@@ -218,7 +235,6 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.show()
 
-
     ## 2.不同时长
     currents, length = section_input(
         values=[0.0, 10, 0.0], durations=[10, 50, 25], return_length=True
@@ -234,7 +250,6 @@ if __name__ == "__main__":
     plt.legend(["V", "I"])
     plt.tight_layout()
     plt.show()
-
 
     # 了解动作电位大小和形状不随刺激电流的变化而变化
     currents, length = section_input(
@@ -254,7 +269,6 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.show()
 
-
     # 了解动作电位的不应期
     currents, length = section_input(
         values=[0.0, 10, 0, np.asarray([10.0, 15.0, 40.0]), 0.0],
@@ -271,7 +285,6 @@ if __name__ == "__main__":
     plt.title("Refractory period")
     plt.tight_layout()
     plt.show()
-
 
     # 了解动作电位发生时电导和门控变量随时间变化规律
     currents, length = section_input(
@@ -296,4 +309,3 @@ if __name__ == "__main__":
     plt.xlabel("Time (ms)")
     plt.tight_layout()
     plt.show()
-

@@ -29,7 +29,9 @@ class LorenzEq:
         if inits is None:
             state = np.asarray([8.0, 1.0, 1.0], dtype=float)
         elif isinstance(inits, dict):
-            state = np.asarray([inits["x"], inits["y"], inits["z"]], dtype=float).reshape(3)
+            state = np.asarray(
+                [inits["x"], inits["y"], inits["z"]], dtype=float
+            ).reshape(3)
         else:
             raise ValueError
 
@@ -40,12 +42,7 @@ class LorenzEq:
         def derivative(values):
             x, y, z = values
             return np.asarray(
-                [
-                    sigma * (y - x),
-                    x * (rho - z) - y,
-                    x * y - beta * z,
-                ],
-                dtype=float,
+                [sigma * (y - x), x * (rho - z) - y, x * y - beta * z], dtype=float
             )
 
         for i in range(num_step):
@@ -95,9 +92,12 @@ class ESN:
         self.rng = np.random.default_rng(1)  # 随机数生成器
 
         if W_in_initializer is None:
+
             def W_in_initializer(shape):
                 return np.random.default_rng(345).uniform(-0.1, 0.1, shape)
+
         if W_rec_initializer is None:
+
             def W_rec_initializer(shape):
                 return np.random.default_rng(456).normal(0.0, 0.1, shape)
 
@@ -175,7 +175,9 @@ class ESN:
 
         for i in range(inputs.shape[1]):
             self.state = np.tanh(inputs[:, i] @ self.W_in + self.state @ self.W)
-            x_aug = np.concatenate([np.ones((self.state.shape[0], 1)), self.state], axis=1)
+            x_aug = np.concatenate(
+                [np.ones((self.state.shape[0], 1)), self.state], axis=1
+            )
             out = x_aug @ weights
             outputs[:, i] = out
 
@@ -238,9 +240,7 @@ def show_ESN_property():
         assert len(state1) == len(state2)
         x = np.arange(len(state1))
         ax.plot(x, state1, marker=".", markersize=4, linestyle="", label="first state")
-        ax.plot(
-            x, state2, marker="+", markersize=4, linestyle="", label="second state"
-        )
+        ax.plot(x, state2, marker="+", markersize=4, linestyle="", label="second state")
         ax.legend(loc="upper right")
         ax.set_xlabel("Neuron index")
         ax.set_ylabel("State")
@@ -367,10 +367,7 @@ def fit_sine_wave(training_method="force"):
 
     ax = fig.add_subplot(gs[0, 3:])
     plot_result(
-        ax,
-        out.flatten()[num_discard:],
-        Y.flatten()[num_discard:],
-        "After training",
+        ax, out.flatten()[num_discard:], Y.flatten()[num_discard:], "After training"
     )
 
     max_ = 0
@@ -431,9 +428,13 @@ def fit_Lorenz_system(predict_step=200, training_method="force"):
 
     def training_lorenz(title):
         if training_method == "ridge":
-            model.fit_ridge(X[:, :30000, :], Y[:, :30000, :], alpha=1e-6)  # 用前 30000 个时间的数据来训练
+            model.fit_ridge(
+                X[:, :30000, :], Y[:, :30000, :], alpha=1e-6
+            )  # 用前 30000 个时间的数据来训练
         else:
-            model.fit_force(X[:, :30000, :], Y[:, :30000, :], alpha=1e-6)  # 用前 30000 个时间的数据来训练
+            model.fit_force(
+                X[:, :30000, :], Y[:, :30000, :], alpha=1e-6
+            )  # 用前 30000 个时间的数据来训练
 
         predict = model.predict(X, reset_state=True)
 

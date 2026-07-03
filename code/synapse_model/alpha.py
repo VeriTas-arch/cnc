@@ -1,19 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
-
 from synapse_utils import apply_brainpy_delay, create_post_hh
 
 
 class Alpha:
-    def __init__(
-        self,
-        type,
-        g_max=5.0,
-        tau=5.0,
-        delay_step=2,
-        E=0.0,
-        V_rest=-65.0,
-    ):
+    def __init__(self, type, g_max=5.0, tau=5.0, delay_step=2, E=0.0, V_rest=-65.0):
         self.g_max = g_max
         self.tau = tau
         self.E = E

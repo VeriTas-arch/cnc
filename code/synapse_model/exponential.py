@@ -1,19 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
-
 from synapse_utils import apply_brainpy_delay, create_post_hh
 
 
 class Exponential:
-    def __init__(
-        self,
-        type,
-        g_max=0.02,
-        tau=12.0,
-        delay_step=2,
-        E=0.0,
-        V_rest=-65.0,
-    ):
+    def __init__(self, type, g_max=0.02, tau=12.0, delay_step=2, E=0.0, V_rest=-65.0):
         self.tau = tau
         self.g_max = g_max
         self.delay_step = delay_step

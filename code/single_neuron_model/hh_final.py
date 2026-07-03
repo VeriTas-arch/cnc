@@ -2,7 +2,7 @@
 在基础版代码的基础上，增加了课后思考题中提到的内容，即 m shift 后神经元发放的变化。
 """
 
-from hh import HH, line_plot, np, plt, section_input, _safe_rate
+from hh import HH, _safe_rate, line_plot, np, plt, section_input
 
 if __name__ == "__main__":
     # 一个简单的示例，观察神经元在10ms的刺激电流作用下的活动
@@ -19,7 +19,6 @@ if __name__ == "__main__":
     plt.legend(["membrane potential", "input current"])
     plt.tight_layout()
     plt.show()
-
 
     # 神经元在不同刺激电流强度和时长下的活动
     ## 1.不同刺激电流强度
@@ -40,7 +39,6 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.show()
 
-
     ## 2.不同时长
     currents, length = section_input(
         values=[0.0, 10, 0.0], durations=[10, 50, 25], return_length=True
@@ -56,7 +54,6 @@ if __name__ == "__main__":
     plt.legend(["V", "I"])
     plt.tight_layout()
     plt.show()
-
 
     # 了解动作电位大小和形状不随刺激电流的变化而变化
     currents, length = section_input(
@@ -76,7 +73,6 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.show()
 
-
     # 了解动作电位的不应期
     currents, length = section_input(
         values=[0.0, 10, 0, np.asarray([10.0, 15.0, 40.0]), 0.0],
@@ -93,7 +89,6 @@ if __name__ == "__main__":
     plt.title("Refractory period")
     plt.tight_layout()
     plt.show()
-
 
     # 了解动作电位发生时电导和门控变量随时间变化规律
     currents, length = section_input(
@@ -119,7 +114,6 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.show()
 
-
     # 更改模型中参数后，观察 m shift 后神经元发放的变化
     class ShiftedHH(HH):
         def __init__(self, size, mshift=0.0, **kwargs):
@@ -134,7 +128,6 @@ if __name__ == "__main__":
             dmdt = alpha * (1 - m) - beta * m
             return dmdt
 
-
     currents, length = section_input(
         values=[0.0, 10, 0.0], durations=[10, 2, 25], return_length=True
     )
@@ -147,4 +140,3 @@ if __name__ == "__main__":
     plt.title("HH model with m shift")
     plt.tight_layout()
     plt.show()
-

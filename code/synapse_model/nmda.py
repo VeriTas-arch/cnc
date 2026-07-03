@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-
 from synapse_utils import apply_brainpy_delay, create_post_hh
 
 
@@ -93,7 +92,9 @@ def section_input(values, durations, dt):
     return np.concatenate(pieces)
 
 
-def run_syn(syn_model, title, run_duration=200.0, sp_times=(25, 50, 75, 100, 160), dt=0.1):
+def run_syn(
+    syn_model, title, run_duration=200.0, sp_times=(25, 50, 75, 100, 160), dt=0.1
+):
     # 定义突触前神经元、突触后神经元和突触连接，并构建神经网络
     ts, pre_spike = make_spike_train(sp_times, run_duration, dt)
     syn = syn_model()

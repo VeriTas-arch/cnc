@@ -103,21 +103,29 @@ class HH:
             * self._exprel(
                 dt
                 * self._linearize(
-                    lambda V: self.dV(V, self.h, self.n, self.m, self.input),
-                    self.V,
+                    lambda V: self.dV(V, self.h, self.n, self.m, self.input), self.V
                 )
             )
             * dV
         )
-        m = self.m + dt * self._exprel(
-            dt * self._linearize(lambda m: self.dm(m, self.V), self.m)
-        ) * dm
-        h = self.h + dt * self._exprel(
-            dt * self._linearize(lambda h: self.dh(h, self.V), self.h)
-        ) * dh
-        n = self.n + dt * self._exprel(
-            dt * self._linearize(lambda n: self.dn(n, self.V), self.n)
-        ) * dn
+        m = (
+            self.m
+            + dt
+            * self._exprel(dt * self._linearize(lambda m: self.dm(m, self.V), self.m))
+            * dm
+        )
+        h = (
+            self.h
+            + dt
+            * self._exprel(dt * self._linearize(lambda h: self.dh(h, self.V), self.h))
+            * dh
+        )
+        n = (
+            self.n
+            + dt
+            * self._exprel(dt * self._linearize(lambda n: self.dn(n, self.V), self.n))
+            * dn
+        )
 
         self.spike = np.logical_and(self.V < self.V_th, V >= self.V_th)
         self.t_last_spike = np.where(self.spike, t, self.t_last_spike)
