@@ -1,14 +1,12 @@
-import brainpy as bp
-import brainpy.math as bm
 import matplotlib.pyplot as plt
+import numpy as np
+
+from synapse_utils import apply_brainpy_delay, create_post_hh
 
 
-class Alpha(bp.dyn.SynConn):
+class Alpha:
     def __init__(
         self,
-        pre,
-        post,
-        conn,
         type,
         g_max=5.0,
         tau=5.0,
@@ -16,7 +14,6 @@ class Alpha(bp.dyn.SynConn):
         E=0.0,
         V_rest=-65.0,
     ):
-        super().__init__(pre=pre, post=post, conn=conn)
         self.g_max = g_max
         self.tau = tau
         self.E = E
@@ -25,87 +22,95 @@ class Alpha(bp.dyn.SynConn):
         self.type = type  # CUBA / COBA
 
         # Use a dense connection matrix to avoid numba-dependent event operators.
-        self.conn_mat = bm.asarray(self.conn.require("conn_mat"), dtype=bm.float_)
-        self.g = bm.Variable(bm.zeros(self.post.num))
-        self.h = bm.Variable(bm.zeros(self.post.num))
-        self.delay = bm.LengthDelay(self.pre.spike, delay_step)
+        self.g = 0.0
+        self.h = 0.0
 
-        self.ini_h = bp.odeint(f=lambda h, t: -h / self.tau, method="exp_auto")
-        self.int_g = bp.odeint(f=lambda g, t, h: -g / self.tau + h, method="exp_auto")
+    def update(self, pre_spike, post_V, dt):
+        post_sp = float(pre_spike) * self.g_max
 
-    def update(self):
-        t = bp.share["t"]
-        dt = bp.share["dt"]
-        delayed_pre_spike = self.delay(self.delay_step)
-        self.delay.update(self.pre.spike)
-
-        pre_sp = bm.asarray(delayed_pre_spike, dtype=bm.float_)
-        post_sp = bm.matmul(pre_sp, self.conn_mat) * self.g_max
-
-        self.h.value = self.ini_h(self.h, t, dt) + post_sp
-        self.g.value = self.int_g(self.g, t, self.h, dt)
+        decay = np.exp(-dt / self.tau)
+        self.h *= decay
+        self.h += post_sp
+        self.g = self.g * decay + self.h * self.tau * (1.0 - decay)
 
         if self.type == "CUBA":
-            self.post.input += self.g * (self.E - self.V_rest)
+            current = self.g * (self.E - self.V_rest)
         elif self.type == "COBA":
-            self.post.input += self.g * (self.E - self.post.V)
+            current = self.g * (self.E - post_V)
+        else:
+            raise ValueError("type should be 'CUBA' or 'COBA'")
+        return self.g, current
+
+
+def make_spike_train(sp_times, run_duration, dt):
+    ts = np.arange(0.0, run_duration, dt)
+    spikes = np.zeros_like(ts)
+    for t in sp_times:
+        idx = int(round(t / dt))
+        if 0 <= idx < len(spikes):
+            spikes[idx] = 1.0
+    return ts, spikes
 
 
 def run_syn(
-    syn_model, type, title, run_duration=200.0, sp_times=(25, 50, 75, 100, 150)
+    syn_model, type, title, run_duration=200.0, sp_times=(25, 50, 75, 100, 150), dt=0.1
 ):
-    neu1 = bp.neurons.SpikeTimeGroup(1, times=sp_times, indices=[0] * len(sp_times))
-    neu2 = bp.neurons.HH(1, V_initializer=bp.initialize.Constant(-50.68))
-    syn1 = syn_model(neu1, neu2, conn=bp.connect.All2All(), type=type)
-    net = bp.DynSysGroup(pre=neu1, syn=syn1, post=neu2)
+    ts, pre_spike = make_spike_train(sp_times, run_duration, dt)
+    syn = syn_model(type=type)
+    delayed_spike = apply_brainpy_delay(pre_spike, syn.delay_step)
 
-    runner = bp.DSRunner(net, monitors=["pre.spike", "post.V", "syn.g", "post.input"])
-    runner.predict(run_duration)
+    post = create_post_hh(-50.68)
+    post_V = np.zeros_like(ts)
+    g = np.zeros_like(ts)
+    post_input = np.zeros_like(ts)
+    for i, t in enumerate(ts):
+        g[i], post_input[i] = syn.update(delayed_spike[i], post.V[0], dt)
+        post.update(post_input[i], t, dt)
+        post_V[i] = post.V[0]
 
-    fig, gs = bp.visualize.get_figure(7, 1, 0.5, 6.0)
+    fig, axes = plt.subplots(4, 1, figsize=(6.0, 3.5), sharex=True)
 
-    ax = fig.add_subplot(gs[0, 0])
-    plt.plot(runner.mon.ts, runner.mon["pre.spike"], label="pre.spike")
-    plt.legend(loc="upper right")
-    plt.title(title)
-    plt.xticks([])
+    ax = axes[0]
+    ax.plot(ts, pre_spike, label="pre.spike")
+    ax.legend(loc="upper right")
+    ax.set_title(title)
     ax.spines["top"].set_visible(False)
     ax.spines["bottom"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    ax = fig.add_subplot(gs[1:3, 0])
-    plt.plot(runner.mon.ts, runner.mon["syn.g"], label="g", color="#d62728")
-    plt.legend(loc="upper right")
-    plt.xticks([])
+    ax = axes[1]
+    ax.plot(ts, g, label="g", color="#d62728")
+    ax.legend(loc="upper right")
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    ax = fig.add_subplot(gs[3:5, 0])
-    plt.plot(runner.mon.ts, runner.mon["post.input"], label="PSC", color="#d62728")
-    plt.legend(loc="upper right")
-    plt.xticks([])
+    ax = axes[2]
+    ax.plot(ts, post_input, label="PSC", color="#d62728")
+    ax.legend(loc="upper right")
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    ax = fig.add_subplot(gs[5:7, 0])
-    plt.plot(runner.mon.ts, runner.mon["post.V"], label="post.V")
-    plt.legend(loc="upper right")
-    plt.xlabel("Time [ms]")
+    ax = axes[3]
+    ax.plot(ts, post_V, label="post.V")
+    ax.legend(loc="upper right")
+    ax.set_xlabel("Time [ms]")
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
+    plt.tight_layout()
     plt.show()
 
 
-run_syn(
-    Alpha,
-    type="CUBA",
-    sp_times=[25, 50, 75, 100, 160],
-    title="Alpha Synapse Model (Current-Based)",
-)
-run_syn(
-    Alpha,
-    type="COBA",
-    sp_times=[25, 50, 75, 100, 160],
-    title="Alpha Synapse Model (Conductance-Based)",
-)
+if __name__ == "__main__":
+    run_syn(
+        Alpha,
+        type="CUBA",
+        sp_times=[25, 50, 75, 100, 160],
+        title="Alpha Synapse Model (Current-Based)",
+    )
+    run_syn(
+        Alpha,
+        type="COBA",
+        sp_times=[25, 50, 75, 100, 160],
+        title="Alpha Synapse Model (Conductance-Based)",
+    )

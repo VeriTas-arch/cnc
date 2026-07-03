@@ -1,11 +1,9 @@
-import brainpy as bp
-import brainpy.math as bm
 import matplotlib.pyplot as plt
 import numpy as np
 
 
 class LorenzEq:
-    """Local copy of the Lorenz-system generator used from brainpy_datasets."""
+    """Lorenz-system trajectory generator."""
 
     def __init__(
         self,
@@ -16,40 +14,52 @@ class LorenzEq:
         rho=28,
         method="rk4",
         inits=None,
-        numpy_mon=False,
         t_transform=None,
         x_transform=None,
         y_transform=None,
         z_transform=None,
     ):
+        if method != "rk4":
+            raise ValueError("Only rk4 is supported in the NumPy implementation.")
         self.t_transform = t_transform
         self.x_transform = x_transform
         self.y_transform = y_transform
         self.z_transform = z_transform
 
-        def dx(x, t, y):
-            return sigma * (y - x)
+        if inits is None:
+            state = np.asarray([8.0, 1.0, 1.0], dtype=float)
+        elif isinstance(inits, dict):
+            state = np.asarray([inits["x"], inits["y"], inits["z"]], dtype=float).reshape(3)
+        else:
+            raise ValueError
 
-        def dy(y, t, x, z):
-            return x * (rho - z) - y
+        num_step = int(duration / dt)
+        ts = np.arange(num_step, dtype=float) * dt
+        data = np.zeros((num_step, 3), dtype=float)
 
-        def dz(z, t, x, y):
-            return x * y - beta * z
+        def derivative(values):
+            x, y, z = values
+            return np.asarray(
+                [
+                    sigma * (y - x),
+                    x * (rho - z) - y,
+                    x * y - beta * z,
+                ],
+                dtype=float,
+            )
 
-        integral = bp.odeint(bp.JointEq([dx, dy, dz]), method=method)
+        for i in range(num_step):
+            data[i] = state
+            k1 = derivative(state)
+            k2 = derivative(state + 0.5 * dt * k1)
+            k3 = derivative(state + 0.5 * dt * k2)
+            k4 = derivative(state + dt * k3)
+            state = state + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6.0
 
-        res = _three_variable_model(
-            integral,
-            default_inits={"x": 8, "y": 1, "z": 1},
-            duration=duration,
-            dt=dt,
-            inits=inits,
-            numpy_mon=numpy_mon,
-        )
-        self.ts = res["ts"]
-        self.xs = res["x"]
-        self.ys = res["y"]
-        self.zs = res["z"]
+        self.ts = ts
+        self.xs = data[:, 0:1]
+        self.ys = data[:, 1:2]
+        self.zs = data[:, 2:3]
 
     def __len__(self):
         return self.ts.size
@@ -67,105 +77,128 @@ class LorenzEq:
         return t, x, y, z
 
 
-def _three_variable_model(
-    integrator,
-    duration,
-    default_inits,
-    inits=None,
-    args=None,
-    dyn_args=None,
-    dt=0.001,
-    numpy_mon=False,
-):
-    if inits is None:
-        inits = default_inits
-    elif isinstance(inits, dict):
-        assert "x" in inits
-        assert "y" in inits
-        assert "z" in inits
-        inits = {
-            "x": bm.asarray(inits["x"]).flatten(),
-            "y": bm.asarray(inits["y"]).flatten(),
-            "z": bm.asarray(inits["z"]).flatten(),
-        }
-        assert inits["x"].shape == inits["y"].shape == inits["z"].shape
-    else:
-        raise ValueError
-
-    runner = bp.IntegratorRunner(
-        integrator,
-        monitors=["x", "y", "z"],
-        inits=inits,
-        args=args,
-        dyn_args=dyn_args,
-        dt=dt,
-        progress_bar=False,
-        numpy_mon_after_run=numpy_mon,
-    )
-    runner.run(duration)
-    return {
-        "ts": runner.mon["ts"],
-        "x": runner.mon["x"],
-        "y": runner.mon["y"],
-        "z": runner.mon["z"],
-    }
-
-
-class ESN(bp.DynamicalSystem):
+class ESN:
     def __init__(
         self,
         num_in,
         num_rec,
         num_out,
         lambda_max=0.9,
-        W_in_initializer=bp.init.Uniform(-0.1, 0.1, seed=345),
-        W_rec_initializer=bp.init.Normal(scale=0.1, seed=456),
+        W_in_initializer=None,
+        W_rec_initializer=None,
         in_connectivity=0.05,
         rec_connectivity=0.05,
     ):
-        super().__init__(mode=bm.BatchingMode())
-
         self.num_in = num_in
         self.num_rec = num_rec
         self.num_out = num_out
-        self.rng = bm.random.RandomState(1)  # 随机数生成器
+        self.rng = np.random.default_rng(1)  # 随机数生成器
+
+        if W_in_initializer is None:
+            def W_in_initializer(shape):
+                return np.random.default_rng(345).uniform(-0.1, 0.1, shape)
+        if W_rec_initializer is None:
+            def W_rec_initializer(shape):
+                return np.random.default_rng(456).normal(0.0, 0.1, shape)
 
         # 初始化连接矩阵
         self.W_in = W_in_initializer((num_in, num_rec))
         conn_mat = self.rng.random((num_in, num_rec)) > in_connectivity
-        self.W_in = bm.where(conn_mat, 0.0, self.W_in)  # 按连接概率削减连接度
+        self.W_in = np.where(conn_mat, 0.0, self.W_in)  # 按连接概率削减连接度
 
         self.W = W_rec_initializer((num_rec, num_rec))
         conn_mat = self.rng.random(self.W.shape) > rec_connectivity
-        self.W = bm.where(conn_mat, 0.0, self.W)  # 按连接概率削减连接度
+        self.W = np.where(conn_mat, 0.0, self.W)  # 按连接概率削减连接度
 
         # 定义输出层
-        self.readout = bp.dnn.Dense(
-            num_rec, num_out, W_initializer=bp.init.Normal(), mode=bm.TrainingMode()
-        )
+        self.W_out = np.random.default_rng(789).normal(0.0, 1.0, (num_rec, num_out))
+        self.b_out = np.zeros(num_out, dtype=float)
 
         # 缩放 W，使 ESN 具有回声性质
-        spectral_radius = bm.max(bm.abs(bm.linalg.eigvals(self.W)))  # 计算谱半径
+        spectral_radius = np.max(np.abs(np.linalg.eigvals(self.W)))  # 计算谱半径
         self.W *= lambda_max / spectral_radius  # 根据谱半径缩放 W
 
         # 初始化变量
-        self.state = bm.Variable(bm.zeros((1, num_rec)), batch_axis=0)  # 神经元状态
-        self.y = bm.Variable(bm.zeros((1, num_out)), batch_axis=0)  # 库网络输出
+        self.state = np.zeros((1, num_rec), dtype=float)  # 神经元状态
+        self.y = np.zeros((1, num_out), dtype=float)  # 库网络输出
 
     # 重置函数：重置模型中各变量的值
     def reset_state(self, batch_size=None):
         if batch_size is None:
-            self.state.value = bm.zeros(self.state.shape)
-            self.y.value = bm.zeros(self.y.shape)
+            self.state = np.zeros_like(self.state)
+            self.y = np.zeros_like(self.y)
         else:
-            self.state.value = bm.zeros((int(batch_size),) + self.state.shape[1:])
-            self.y.value = bm.zeros((int(batch_size),) + self.y.shape[1:])
+            self.state = np.zeros((int(batch_size), self.num_rec), dtype=float)
+            self.y = np.zeros((int(batch_size), self.num_out), dtype=float)
 
     def update(self, u):
-        self.state.value = bm.tanh(bm.dot(u, self.W_in) + bm.dot(self.state, self.W))
-        out = self.readout(self.state.value)
-        self.y.value = out
+        self.state = np.tanh(u @ self.W_in + self.state @ self.W)
+        out = self.state @ self.W_out + self.b_out
+        self.y = out
         return out
+
+    def predict(self, inputs, reset_state=False, collect_state=False):
+        inputs = np.asarray(inputs, dtype=float)
+        if inputs.ndim != 3:
+            raise ValueError("inputs must have shape (batch, time, feature).")
+        if reset_state or self.state.shape[0] != inputs.shape[0]:
+            self.reset_state(batch_size=inputs.shape[0])
+
+        outputs = np.zeros(inputs.shape[:2] + (self.num_out,), dtype=float)
+        states = np.zeros(inputs.shape[:2] + (self.num_rec,), dtype=float)
+        for i in range(inputs.shape[1]):
+            outputs[:, i] = self.update(inputs[:, i])
+            if collect_state:
+                states[:, i] = self.state
+        return (outputs, states) if collect_state else outputs
+
+    def fit_ridge(self, inputs, targets, alpha=1e-7, reset_state=False):
+        _, states = self.predict(inputs, reset_state=reset_state, collect_state=True)
+        x = states.reshape(-1, self.num_rec)
+        y = np.asarray(targets, dtype=float).reshape(-1, self.num_out)
+        x_aug = np.concatenate([np.ones((x.shape[0], 1)), x], axis=1)
+        reg = alpha * np.eye(x_aug.shape[1])
+        weights = np.linalg.pinv(x_aug.T @ x_aug + reg) @ (x_aug.T @ y)
+        self.b_out = weights[0]
+        self.W_out = weights[1:]
+        return self.predict(inputs, reset_state=reset_state)
+
+    def fit_force(self, inputs, targets, alpha=1.0, reset_state=False):
+        inputs = np.asarray(inputs, dtype=float)
+        targets = np.asarray(targets, dtype=float)
+        if reset_state or self.state.shape[0] != inputs.shape[0]:
+            self.reset_state(batch_size=inputs.shape[0])
+
+        P = np.eye(self.num_rec + 1) * alpha
+        weights = np.vstack([self.b_out.reshape(1, -1), self.W_out])
+        outputs = np.zeros(targets.shape, dtype=float)
+
+        for i in range(inputs.shape[1]):
+            self.state = np.tanh(inputs[:, i] @ self.W_in + self.state @ self.W)
+            x_aug = np.concatenate([np.ones((self.state.shape[0], 1)), self.state], axis=1)
+            out = x_aug @ weights
+            outputs[:, i] = out
+
+            for b in range(inputs.shape[0]):
+                x = x_aug[b : b + 1]
+                k = P @ x.T
+                c = 1.0 / (1.0 + (x @ k)[0, 0])
+                P -= c * (k @ k.T)
+                error = out[b : b + 1] - targets[b : b + 1, i]
+                weights -= c * (k @ error)
+
+        self.b_out = weights[0]
+        self.W_out = weights[1:]
+        return outputs
+
+
+def mean_absolute_error(output, target):
+    return np.mean(np.abs(output - target))
+
+
+def hide_top_right_spines(ax):
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
 
 
 def show_ESN_property():
@@ -180,47 +213,46 @@ def show_ESN_property():
         model = ESN(num_in, num_res, num_out, lambda_max=lambda_max)
         model.reset_state(batch_size=num_batch)
 
-        inputs = bm.random.randn(
+        inputs = np.random.randn(
             num_batch, int(num_step / num_batch), num_in
         )  # 第 0 个维度为 batch 的大小
 
         # 第一次运行
-        model.state.value = bp.init.Uniform(-1.0, 1.0, seed=123)(
-            (num_batch, num_res)
+        model.state = np.random.default_rng(123).uniform(
+            -1.0, 1.0, (num_batch, num_res)
         )  # 随机初始化网络状态
-        runner = bp.DSTrainer(model, monitors=["state"])
-        runner.predict(inputs)
-        state1 = np.concatenate(runner.mon["state"], axis=0)
+        _, state1 = model.predict(inputs, collect_state=True)
+        state1 = state1.reshape(-1, num_res)
 
         # 第二次运行
-        model.state.value = bp.init.Uniform(-1.0, 1.0, seed=234)(
-            (num_batch, num_res)
+        model.state = np.random.default_rng(234).uniform(
+            -1.0, 1.0, (num_batch, num_res)
         )  # 再次随机初始化网络状态
-        runner = bp.DSTrainer(model, monitors=["state"])
-        runner.predict(inputs)
-        state2 = np.concatenate(runner.mon["state"], axis=0)
+        _, state2 = model.predict(inputs, collect_state=True)
+        state2 = state2.reshape(-1, num_res)
 
         return state1, state2
 
     # 画出两次模拟中某一时刻网络的状态
-    def plot_states(state1, state2, title):
+    def plot_states(ax, state1, state2, title):
         assert len(state1) == len(state2)
         x = np.arange(len(state1))
-        plt.plot(x, state1, marker=".", markersize=4, linestyle="", label="first state")
-        plt.plot(
+        ax.plot(x, state1, marker=".", markersize=4, linestyle="", label="first state")
+        ax.plot(
             x, state2, marker="+", markersize=4, linestyle="", label="second state"
         )
-        plt.legend(loc="upper right")
-        plt.xlabel("Neuron index")
-        plt.ylabel("State")
-        plt.title(title)
+        ax.legend(loc="upper right")
+        ax.set_xlabel("Neuron index")
+        ax.set_ylabel("State")
+        ax.set_title(title)
+        hide_top_right_spines(ax)
 
-    bm.random.seed(54362)
+    np.random.seed(54362)
 
-    fig, gs = bp.visualize.get_figure(1, 1, 4.5, 4)
-    ax = fig.add_subplot(gs[0, 0])
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+    fig = plt.figure(figsize=(12, 7), constrained_layout=True)
+    gs = fig.add_gridspec(2, 3, width_ratios=[1.8, 1.0, 1.0])
+    ax_dist = fig.add_subplot(gs[:, 0])
+    hide_top_right_spines(ax_dist)
 
     lambda1, lambda2, lambda3 = 0.9, 1.0, 1.1
     lambda1_label = rf"$|\lambda_{{max}}|={lambda1}$"
@@ -229,15 +261,15 @@ def show_ESN_property():
     # 画出每个 lambda_max 下两次模拟的网络状态的距离随时间的变化
     state1, state2 = get_esn_states(lambda_max=lambda1)
     distance = np.sqrt(np.sum(np.square(state1 - state2), axis=1))
-    plt.plot(np.arange(num_step), distance, label=lambda1_label)
-    plt.annotate(
+    ax_dist.plot(np.arange(num_step), distance, label=lambda1_label)
+    ax_dist.annotate(
         lambda1_label, xy=(22, 0.4), xytext=(60, 4.0), arrowprops=dict(arrowstyle="->")
     )
 
     state3, state4 = get_esn_states(lambda_max=lambda2)
     distance = np.sqrt(np.sum(np.square(state3 - state4), axis=1))
-    plt.plot(np.arange(num_step), distance, label=lambda2_label)
-    plt.annotate(
+    ax_dist.plot(np.arange(num_step), distance, label=lambda2_label)
+    ax_dist.annotate(
         lambda2_label,
         xy=(84.5, 0.4),
         xytext=(150, 1.7),
@@ -246,143 +278,126 @@ def show_ESN_property():
 
     state5, state6 = get_esn_states(lambda_max=lambda3)
     distance = np.sqrt(np.sum(np.square(state5 - state6), axis=1))
-    plt.plot(np.arange(num_step), distance, label=lambda3_label)
-    plt.text(337, 10, lambda3_label)
+    ax_dist.plot(np.arange(num_step), distance, label=lambda3_label)
+    ax_dist.text(337, 10, lambda3_label)
 
-    plt.xlabel("Running step")
-    plt.ylabel("Distance")
+    ax_dist.set_xlabel("Running step")
+    ax_dist.set_ylabel("Distance")
+    ax_dist.set_title("Distance between two reservoir states")
 
     # 画出两次模拟时网络的初始状态和最终状态
-    fig, gs = bp.visualize.get_figure(2, 1, 2.25, 4)
-    ax = fig.add_subplot(gs[0, 0])
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    plot_states(state1[0], state2[0], title=rf"$|\lambda_{{max}}|={lambda1}, n=0$")
+    ax = fig.add_subplot(gs[0, 1])
+    plot_states(ax, state1[0], state2[0], title=rf"$|\lambda_{{max}}|={lambda1}, n=0$")
     ax.set_xticks([])
     ax.set_xlabel("")
-    ax = fig.add_subplot(gs[1, 0])
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+    ax = fig.add_subplot(gs[1, 1])
     plot_states(
-        state1[-1], state2[-1], title=rf"$|\lambda_{{max}}|={lambda1}, n={num_step}$"
+        ax,
+        state1[-1],
+        state2[-1],
+        title=rf"$|\lambda_{{max}}|={lambda1}, n={num_step}$",
     )
 
-    fig, gs = bp.visualize.get_figure(2, 1, 2.25, 4)
-    ax = fig.add_subplot(gs[0, 0])
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    plot_states(state5[0], state6[0], title=rf"$|\lambda_{{max}}|={lambda3}, n=0$")
+    ax = fig.add_subplot(gs[0, 2])
+    plot_states(ax, state5[0], state6[0], title=rf"$|\lambda_{{max}}|={lambda3}, n=0$")
     ax.set_xticks([])
     ax.set_xlabel("")
-    ax = fig.add_subplot(gs[1, 0])
+    ax = fig.add_subplot(gs[1, 2])
     plot_states(
-        state5[-1], state6[-1], title=rf"$|\lambda_{{max}}|={lambda3}, n={num_step}$"
+        ax,
+        state5[-1],
+        state6[-1],
+        title=rf"$|\lambda_{{max}}|={lambda3}, n={num_step}$",
     )
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
     plt.show()
 
 
 def fit_sine_wave(training_method="force"):
-    bm.enable_x64()  # 使用更高精度的 float 以提高训练精度
-
     num_in, num_res, num_out = 1, 600, 1
     num_step = 1000  # 模拟总步长
     num_discard = 200  # 训练时，丢弃掉前 200 个数据
 
-    def plot_result(output, Y, title):
+    def plot_result(ax, output, Y, title):
         assert output.shape == Y.shape
         x = np.arange(output.shape[0])
-        plt.plot(x, Y, linestyle="--", label="$y$")
-        plt.plot(x, output, label=r"$\hat{y}$")
-        plt.legend()
-        plt.xlabel("Running step")
-        plt.ylabel("State")
-        plt.title(title)
+        ax.plot(x, Y, linestyle="--", label="$y$")
+        ax.plot(x, output, label=r"$\hat{y}$")
+        ax.legend()
+        ax.set_xlabel("Running step")
+        ax.set_ylabel("State")
+        ax.set_title(title)
+        hide_top_right_spines(ax)
 
     # 生成训练数据
-    n = bm.linspace(0.0, bm.pi, num_step)
-    U = bm.sin(10 * n) + bm.random.normal(scale=0.01, size=num_step)  # 输入
+    n = np.linspace(0.0, np.pi, num_step)
+    U = np.sin(10 * n) + np.random.normal(scale=0.01, size=num_step)  # 输入
     U = U.reshape((1, -1, num_in))  # 维度：(num_batch, num_step, num_dim)
-    Y = bm.power(bm.sin(10 * n), 7)  # 输出
+    Y = np.power(np.sin(10 * n), 7)  # 输出
     Y = Y.reshape((1, -1, num_out))  # 维度：(num_batch, num_step, num_dim)
 
     model = ESN(num_in, num_res, num_out, lambda_max=1)
 
     # 训练前，运行模型得到结果
-    runner = bp.DSTrainer(model, monitors=["state"])
-    untrained_out = runner.predict(U)
-    print(
-        bp.losses.mean_absolute_error(
-            untrained_out[:, num_discard:], Y[:, num_discard:]
-        )
-    )
+    untrained_out, _ = model.predict(U, reset_state=True, collect_state=True)
+    # print(mean_absolute_error(untrained_out[:, num_discard:], Y[:, num_discard:]))
 
     if training_method not in ["ridge", "force"]:
         raise ValueError("training_method must be either 'ridge' or 'force'.")
     elif training_method == "ridge":
         # 用岭回归法训练，注意此处 alpha 为岭回归的正则化参数
-        trainer = bp.RidgeTrainer(model, alpha=1e-12)
-        trainer.fit([U[:, num_discard:], Y[:, num_discard:]])
+        model.fit_ridge(U[:, num_discard:], Y[:, num_discard:], alpha=1e-12)
     elif training_method == "force":
         # 用 FORCE 学习法训练，注意此处 alpha 为 P 矩阵初始化的参数
-        trainer = bp.ForceTrainer(model, alpha=100)
-        trainer.fit([U[:, num_discard:], Y[:, num_discard:]])
+        model.fit_force(U[:, num_discard:], Y[:, num_discard:], alpha=100)
 
     # 训练后，运行模型得到结果
-    runner = bp.DSTrainer(model, monitors=["state"])
-    out = runner.predict(U)
-    print(bp.losses.mean_absolute_error(out[:, num_discard:], Y[:, num_discard:]))
+    out, state = model.predict(U, reset_state=True, collect_state=True)
+    print(mean_absolute_error(out[:, num_discard:], Y[:, num_discard:]))
 
     # 可视化
-    fig, gs = bp.visualize.get_figure(1, 1, 4.5, 6)
-    ax = fig.add_subplot(gs[0, 0])
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+    fig = plt.figure(figsize=(12, 7), constrained_layout=True)
+    gs = fig.add_gridspec(2, 6)
+    ax = fig.add_subplot(gs[0, :3])
     plot_result(
+        ax,
         untrained_out.flatten()[num_discard:],
         Y.flatten()[num_discard:],
         "Before training",
     )
 
-    fig, gs = bp.visualize.get_figure(1, 1, 4.5, 6)
-    ax = fig.add_subplot(gs[0, 0])
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+    ax = fig.add_subplot(gs[0, 3:])
     plot_result(
-        out.flatten()[num_discard:], Y.flatten()[num_discard:], "After training"
+        ax,
+        out.flatten()[num_discard:],
+        Y.flatten()[num_discard:],
+        "After training",
     )
-    plt.show()
 
     max_ = 0
     rng = np.random.RandomState(12354)
     i1, i2, i3, i4 = tuple(rng.choice(np.arange(num_res), 4, replace=False))
-    fig, gs = bp.visualize.get_figure(1, 3, 3, 4)
-    state = runner.mon["state"].squeeze()
-    ax1 = fig.add_subplot(gs[0, 0])
-    plt.plot(np.arange(num_step - num_discard), state[num_discard:, i1])
-    plt.title("Neuron {}".format(i1))
-    plt.xlabel("Running step")
-    ax1.spines["top"].set_visible(False)
-    ax1.spines["right"].set_visible(False)
+    state = state.squeeze()
+    ax1 = fig.add_subplot(gs[1, :2])
+    ax1.plot(np.arange(num_step - num_discard), state[num_discard:, i1])
+    ax1.set_title("Neuron {}".format(i1))
+    ax1.set_xlabel("Running step")
+    hide_top_right_spines(ax1)
     if max_ < state[num_discard:, i1].max():
         max_ = state[num_discard:, i1].max()
 
-    ax2 = fig.add_subplot(gs[0, 1])
-    plt.plot(np.arange(num_step - num_discard), state[num_discard:, i2])
-    plt.title("Neuron {}".format(i2))
-    plt.xlabel("Running step")
-    ax2.spines["top"].set_visible(False)
-    ax2.spines["right"].set_visible(False)
+    ax2 = fig.add_subplot(gs[1, 2:4])
+    ax2.plot(np.arange(num_step - num_discard), state[num_discard:, i2])
+    ax2.set_title("Neuron {}".format(i2))
+    ax2.set_xlabel("Running step")
+    hide_top_right_spines(ax2)
     if max_ < state[num_discard:, i2].max():
         max_ = state[num_discard:, i2].max()
 
-    ax3 = fig.add_subplot(gs[0, 2])
-    plt.plot(np.arange(num_step - num_discard), state[num_discard:, i3])
-    plt.title("Neuron {}".format(i3))
-    plt.xlabel("Running step")
-    ax3.spines["top"].set_visible(False)
-    ax3.spines["right"].set_visible(False)
+    ax3 = fig.add_subplot(gs[1, 4:])
+    ax3.plot(np.arange(num_step - num_discard), state[num_discard:, i3])
+    ax3.set_title("Neuron {}".format(i3))
+    ax3.set_xlabel("Running step")
+    hide_top_right_spines(ax3)
     if max_ < state[num_discard:, i3].max():
         max_ = state[num_discard:, i3].max()
 
@@ -395,36 +410,38 @@ def fit_sine_wave(training_method="force"):
 
 
 def fit_Lorenz_system(predict_step=200, training_method="force"):
-    bm.enable_x64()
     predict_step = int(predict_step)
     if predict_step <= 0:
         raise ValueError("predict_step must be positive.")
 
     # 生成洛伦兹系统的数据
     lorenz = LorenzEq(100)
-    data = bm.hstack([lorenz.xs, lorenz.ys, lorenz.zs])
+    data = np.hstack([lorenz.xs, lorenz.ys, lorenz.zs])
 
     # Y 比 X 提前 predict_step 个步长，即需要预测系统未来的 Y
     X, Y = data[:-predict_step], data[predict_step:]
     # 将第 0 维扩展为 batch 的维度
-    X = bm.expand_dims(X, axis=0)
-    Y = bm.expand_dims(Y, axis=0)
+    X = np.expand_dims(X, axis=0)
+    Y = np.expand_dims(Y, axis=0)
 
     num_in, num_res, num_out = 3, 200, 3
     num_discard = 50
 
     model = ESN(num_in, num_res, num_out, lambda_max=0.9)
 
-    def training_lorenz(trainer, title):
-        trainer.fit([X[:, :30000, :], Y[:, :30000, :]])  # 用前 30000 个时间的数据来训练
+    def training_lorenz(title):
+        if training_method == "ridge":
+            model.fit_ridge(X[:, :30000, :], Y[:, :30000, :], alpha=1e-6)  # 用前 30000 个时间的数据来训练
+        else:
+            model.fit_force(X[:, :30000, :], Y[:, :30000, :], alpha=1e-6)  # 用前 30000 个时间的数据来训练
 
-        predict = trainer.predict(X, reset_state=True)
-        predict = bm.as_numpy(predict)
+        predict = model.predict(X, reset_state=True)
 
-        fig, gs = bp.visualize.get_figure(1, 1, 4.5, 6)
+        fig = plt.figure(figsize=(12, 6), constrained_layout=True)
+        gs = fig.add_gridspec(2, 2, width_ratios=[1.45, 1.0])
         ax = fig.add_subplot(gs[:, 0], projection="3d")
         # 画图时舍去最初 50 个步长的数据，下同
-        plt.plot(
+        ax.plot(
             Y[0, num_discard:, 0],
             Y[0, num_discard:, 1],
             Y[0, num_discard:, 2],
@@ -432,7 +449,7 @@ def fit_Lorenz_system(predict_step=200, training_method="force"):
             label="standard output",
             linestyle="--",
         )
-        plt.plot(
+        ax.plot(
             predict[0, num_discard:, 0],
             predict[0, num_discard:, 1],
             predict[0, num_discard:, 2],
@@ -442,34 +459,29 @@ def fit_Lorenz_system(predict_step=200, training_method="force"):
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_zlabel("z")
-        plt.title(title)
-        plt.legend()
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
+        ax.set_title(title)
+        ax.legend()
 
-        fig, gs = bp.visualize.get_figure(2, 1, 2.25, 6)
-        ax = fig.add_subplot(gs[0, 0])
+        ax = fig.add_subplot(gs[0, 1])
         t = np.arange(Y.shape[1])[num_discard:]
-        plt.plot(
+        ax.plot(
             t, Y[0, num_discard:, 0], linewidth=1, label="standard $x$", linestyle="--"
         )  # 洛伦兹系统中的 x 变量
-        plt.plot(t, predict[0, num_discard:, 0], linewidth=1, label="predicted $x$")
-        plt.ylabel(r"$x$")
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
+        ax.plot(t, predict[0, num_discard:, 0], linewidth=1, label="predicted $x$")
+        ax.set_ylabel(r"$x$")
+        hide_top_right_spines(ax)
         ax.set_xticks([])
-        plt.legend()
+        ax.legend()
 
-        ax = fig.add_subplot(gs[1, 0])
-        plt.plot(
+        ax = fig.add_subplot(gs[1, 1])
+        ax.plot(
             t, Y[0, num_discard:, 2], linewidth=1, label="standard $z$", linestyle="--"
         )  # 洛伦兹系统中的 z 变量
-        plt.plot(t, predict[0, num_discard:, 2], linewidth=1, label="predicted $z$")
-        plt.ylabel(r"$z$")
-        plt.xlabel("Time step")
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        plt.legend()
+        ax.plot(t, predict[0, num_discard:, 2], linewidth=1, label="predicted $z$")
+        ax.set_ylabel(r"$z$")
+        ax.set_xlabel("Time step")
+        hide_top_right_spines(ax)
+        ax.legend()
 
         plt.show()
 
@@ -477,12 +489,10 @@ def fit_Lorenz_system(predict_step=200, training_method="force"):
         raise ValueError("training_method must be either 'ridge' or 'force'.")
     elif training_method == "ridge":
         # 用岭回归法训练
-        ridge_trainer = bp.RidgeTrainer(model, alpha=1e-6)
-        training_lorenz(ridge_trainer, "Training with Ridge Regression")
+        training_lorenz("Training with Ridge Regression")
     elif training_method == "force":
         # 用 FORCE 学习法训练
-        force_trainer = bp.ForceTrainer(model, alpha=1e-6)
-        training_lorenz(force_trainer, "Training with FORCE Learning")
+        training_lorenz("Training with FORCE Learning")
 
 
 if __name__ == "__main__":
